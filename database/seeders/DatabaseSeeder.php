@@ -13,10 +13,10 @@ class DatabaseSeeder extends Seeder
     {
         // Crear usuario administrador
         \App\Domain\Models\User::updateOrCreate(
-            ['email' => 'admin@esenciaseguros.com'],
+            ['email' => 'admin@esenciaseguros.com.ar'],
             [
                 'name' => 'Admin Esencia',
-                'email' => 'admin@esenciaseguros.com',
+                'email' => 'admin@esenciaseguros.com.ar',
                 'password' => bcrypt('password123'),
             ]
         );
