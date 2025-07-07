@@ -2,10 +2,7 @@
 
 namespace Database\Seeders;
 
-use App\Domain\Models\User;
 use Illuminate\Database\Seeder;
-
-// use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 
 class DatabaseSeeder extends Seeder
 {
@@ -14,11 +11,23 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
+        // Crear usuario administrador
+        \App\Domain\Models\User::updateOrCreate(
+            ['email' => 'admin@esenciaseguros.com'],
+            [
+                'name' => 'Admin Esencia',
+                'email' => 'admin@esenciaseguros.com',
+                'password' => bcrypt('password123'),
+            ]
+        );
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
+        // Ejecutar seeders de catálogos SSN
+        $this->call([
+            SsnSpeciesSeeder::class,
+            SsnAffectationsSeeder::class,
+            SsnBanksSeeder::class,
+            SsnDepositTypesSeeder::class,
+            SsnSgrCodesSeeder::class,
         ]);
     }
 }

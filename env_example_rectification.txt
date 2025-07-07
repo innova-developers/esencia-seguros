@@ -1,0 +1,99 @@
+# =============================================================================
+# CONFIGURACIÓN DEL CHECKER DE RECTIFICACIONES SSN
+# =============================================================================
+# Copiar estas variables a tu archivo .env y configurar los valores según tu entorno
+
+# =============================================================================
+# CONFIGURACIÓN DE BASE DE DATOS
+# =============================================================================
+DB_HOST=localhost
+DB_DATABASE=esencia_seguros
+DB_USERNAME=root
+DB_PASSWORD=
+DB_CHARSET=utf8mb4
+
+# =============================================================================
+# CONFIGURACIÓN SSN
+# =============================================================================
+# URL base de la API de SSN
+SSN_BASE_URL=https://ri.ssn.gob.ar/api
+
+# Credenciales para autenticación SSN (OBLIGATORIAS para renovación de token)
+SSN_USERNAME=tu_usuario_ssn
+SSN_CIA=tu_compania_ssn
+SSN_PASSWORD=tu_password_ssn
+
+# Token de autenticación SSN (se renueva automáticamente)
+SSN_TOKEN=
+
+# Timeout para consultas SSN en segundos
+SSN_TIMEOUT=30
+
+# Número de intentos en caso de error
+SSN_RETRY_ATTEMPTS=3
+
+# Delay entre intentos en segundos
+SSN_RETRY_DELAY=5
+
+# =============================================================================
+# CONFIGURACIÓN DE HORARIO HÁBIL
+# =============================================================================
+# Habilitar verificación de horario hábil (true/false)
+BUSINESS_HOURS_ENABLED=true
+
+# Hora de inicio (formato 24h)
+BUSINESS_HOURS_START=8
+
+# Hora de fin (formato 24h)
+BUSINESS_HOURS_END=19
+
+# Días de la semana (1=lunes, 7=domingo, separados por comas)
+BUSINESS_HOURS_DAYS=1,2,3,4,5
+
+# =============================================================================
+# CONFIGURACIÓN DE LOGS
+# =============================================================================
+# Habilitar logs (true/false)
+LOG_ENABLED=true
+
+# Archivo de log
+LOG_FILE=logs/rectification_check.log
+
+# Tamaño máximo del archivo de log en bytes (10MB por defecto)
+LOG_MAX_FILE_SIZE=10485760
+
+# Número máximo de archivos de log a mantener
+LOG_MAX_FILES=30
+
+# Nivel de log (DEBUG, INFO, WARNING, ERROR)
+LOG_LEVEL=INFO
+
+# =============================================================================
+# ESTADOS DE RECTIFICACIÓN
+# =============================================================================
+# Estados que indican que la rectificación fue aprobada (separados por comas)
+RECTIFICATION_APPROVED_STATUSES=RECTIFICAR,A_RECTIFICAR
+
+# Estados que indican que la rectificación fue rechazada (separados por comas)
+RECTIFICATION_REJECTED_STATUSES=RECHAZADA,DENEGADA
+
+# =============================================================================
+# CONFIGURACIÓN DE RENDIMIENTO
+# =============================================================================
+# Delay entre consultas en microsegundos (0.5 segundos por defecto)
+REQUEST_DELAY_MICROSECONDS=500000
+
+# =============================================================================
+# CONFIGURACIÓN DE NOTIFICACIONES (OPCIONAL)
+# =============================================================================
+# Habilitar notificaciones por email (true/false)
+NOTIFICATIONS_ENABLED=false
+
+# Configuración SMTP
+NOTIFICATIONS_SMTP_HOST=
+NOTIFICATIONS_SMTP_PORT=587
+NOTIFICATIONS_SMTP_USERNAME=
+NOTIFICATIONS_SMTP_PASSWORD=
+NOTIFICATIONS_FROM_EMAIL=
+NOTIFICATIONS_FROM_NAME="Sistema Esencia Seguros"
+NOTIFICATIONS_TO_EMAILS=admin@esencia.com,user@esencia.com 

@@ -8,8 +8,8 @@ services:
             args:
                 user: laravel
                 uid: 1000
-        image: laravel-api-template
-        container_name: laravel-api-app
+        image: esencia-seguros-api
+        container_name: esencia-seguros-app
         restart: unless-stopped
         tty: true
         working_dir: /var/www
@@ -17,31 +17,31 @@ services:
             - .:/var/www
             - ./docker/php/php.ini:/usr/local/etc/php/conf.d/php.ini
         networks:
-            - laravel-network
+            - esencia-network
         depends_on:
             - mysql
             - phpmyadmin
 
     mysql:
         image: mysql:8.0
-        container_name: laravel-api-mysql
+        container_name: esencia-seguros-mysql
         restart: unless-stopped
         tty: true
         ports:
             - "3306:3306"
         environment:
-            MYSQL_DATABASE: laravel
-            MYSQL_USER: laravel
-            MYSQL_PASSWORD: laravel
-            MYSQL_ROOT_PASSWORD: root
+            MYSQL_DATABASE: esencia_seguros
+            MYSQL_USER: esencia_user
+            MYSQL_PASSWORD: esencia_password_2024
+            MYSQL_ROOT_PASSWORD: esencia_root_2024
         volumes:
             - ./docker/mysql:/var/lib/mysql
         networks:
-            - laravel-network
+            - esencia-network
 
     phpmyadmin:
         image: phpmyadmin/phpmyadmin
-        container_name: laravel-api-phpmyadmin
+        container_name: esencia-seguros-phpmyadmin
         restart: unless-stopped
         tty: true
         ports:
@@ -49,14 +49,14 @@ services:
         environment:
             PMA_HOST: mysql
             PMA_USER: root
-            PMA_PASSWORD: root
+            PMA_PASSWORD: esencia_root_2024
         depends_on:
             - mysql
         networks:
-            - laravel-network
+            - esencia-network
     nginx:
         image: nginx:stable-alpine
-        container_name: laravel-api-nginx
+        container_name: esencia-seguros-nginx
         ports:
             - "8000:80"
         volumes:
@@ -65,9 +65,9 @@ services:
         depends_on:
             - app
         networks:
-            - laravel-network
+            - esencia-network
 
 
 networks:
-    laravel-network:
+    esencia-network:
         driver: bridge

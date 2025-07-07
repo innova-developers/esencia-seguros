@@ -1,4 +1,6 @@
 {
+    "name": "esencia-seguros-api",
+    "description": "API para el sistema de gestión de seguros de Esencia Seguros",
     "private": true,
     "type": "module",
     "scripts": {

@@ -1,0 +1,303 @@
+/*
+ * Esencia Seguros - Estilos Base
+ * Basado en el diseño oficial de la empresa
+ */
+
+/* Variables CSS personalizadas */
+:root {
+    /* Colores principales */
+    --esencia-primary: #374661;
+    --esencia-primary-light: #4a5a7a;
+    --esencia-primary-dark: #2a3547;
+    --esencia-secondary: #dadada;
+    --esencia-secondary-light: #f5f5f5;
+    --esencia-secondary-dark: #b8b8b8;
+    
+    /* Colores de texto */
+    --esencia-text-primary: #374661;
+    --esencia-text-secondary: #878787;
+    --esencia-text-light: #ffffff;
+    --esencia-text-muted: #6c757d;
+    
+    /* Colores de fondo */
+    --esencia-bg-primary: #ffffff;
+    --esencia-bg-secondary: #dadada;
+    --esencia-bg-dark: #374661;
+    --esencia-bg-light: #f8f9fa;
+    
+    /* Estados */
+    --esencia-success: #28a745;
+    --esencia-warning: #ffc107;
+    --esencia-danger: #dc3545;
+    --esencia-info: #17a2b8;
+    
+    /* Tipos de seguro */
+    --esencia-auto: #007bff;
+    --esencia-home: #28a745;
+    --esencia-life: #dc3545;
+    --esencia-health: #17a2b8;
+    --esencia-business: #6f42c1;
+    --esencia-travel: #fd7e14;
+    
+    /* Espaciado */
+    --esencia-spacing-xs: 0.25rem;
+    --esencia-spacing-sm: 0.5rem;
+    --esencia-spacing-md: 1rem;
+    --esencia-spacing-lg: 1.5rem;
+    --esencia-spacing-xl: 3rem;
+    --esencia-spacing-xxl: 5rem;
+    
+    /* Bordes */
+    --esencia-border-radius: 8px;
+    --esencia-border-radius-small: 4px;
+    --esencia-border-light: #e9ecef;
+    --esencia-border-medium: #dee2e6;
+    --esencia-border-dark: #374661;
+    
+    /* Sombras */
+    --esencia-shadow-light: 0 2px 4px rgba(55, 70, 97, 0.1);
+    --esencia-shadow-medium: 0 4px 8px rgba(55, 70, 97, 0.15);
+    --esencia-shadow-heavy: 0 8px 16px rgba(55, 70, 97, 0.2);
+    --esencia-shadow-card: 0 2px 10px rgba(0, 0, 0, 0.1);
+    
+    /* Fuentes */
+    --esencia-font-primary: 'Montserrat', sans-serif;
+    --esencia-font-secondary: 'Roboto', sans-serif;
+}
+
+/* Estilos base */
+body {
+    text-align: center;
+    padding: 0px;
+    margin: 0px;
+    background-color: var(--esencia-secondary);
+    font-family: var(--esencia-font-primary);
+    color: var(--esencia-text-primary);
+    line-height: 1.6;
+}
+
+/* Contenedores */
+.container {
+    width: 100%;
+    padding-right: 15px;
+    padding-left: 15px;
+    margin-right: auto;
+    margin-left: auto;
+    max-width: 1200px;
+}
+
+.row {
+    display: flex;
+    margin-right: -15px;
+    margin-left: -15px;
+    align-items: center;
+}
+
+.col {
+    text-align: left;
+    padding: 0 15px;
+    flex-basis: 0;
+    flex-grow: 1;
+    max-width: 100%;
+}
+
+/* Footer */
+footer {
+    overflow: hidden;
+    padding: 60px 0;
+    background-color: var(--esencia-bg-primary);
+}
+
+/* Tipografía */
+p, a {
+    color: var(--esencia-text-secondary);
+    font-family: var(--esencia-font-primary);
+    text-decoration: none;
+    margin: 0;
+    font-weight: 400;
+    width: 100%;
+}
+
+.titulo {
+    font-weight: 700;
+    margin-bottom: 5px;
+    margin-top: 10px;
+    color: var(--esencia-text-primary);
+}
+
+/* Logo */
+.logo img {
+    max-width: 250px;
+    height: auto;
+}
+
+/* Datos */
+.datos {
+    display: flex;
+    flex: 3;
+}
+
+.datos div {
+    width: 50%;
+    padding-left: 50px;
+}
+
+/* Protección */
+.proteccion {
+    background-color: var(--esencia-primary);
+    padding: 5px 10px;
+    color: var(--esencia-text-light);
+    font-size: 14px;
+    white-space: nowrap;
+    text-align: center;
+    margin-top: 10px;
+    display: block;
+    border-radius: var(--esencia-border-radius-small);
+}
+
+.proteccion:first-child {
+    margin-top: 20px;
+}
+
+/* Componentes de seguro */
+.insurance-card {
+    background: var(--esencia-bg-primary);
+    border-radius: var(--esencia-border-radius);
+    box-shadow: var(--esencia-shadow-card);
+    padding: var(--esencia-spacing-lg);
+    margin-bottom: var(--esencia-spacing-lg);
+    border: 1px solid var(--esencia-border-light);
+}
+
+.insurance-type {
+    display: inline-block;
+    padding: var(--esencia-spacing-sm) var(--esencia-spacing-md);
+    border-radius: var(--esencia-border-radius-small);
+    color: var(--esencia-text-light);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.insurance-type.auto { background-color: var(--esencia-auto); }
+.insurance-type.home { background-color: var(--esencia-home); }
+.insurance-type.life { background-color: var(--esencia-life); }
+.insurance-type.health { background-color: var(--esencia-health); }
+.insurance-type.business { background-color: var(--esencia-business); }
+.insurance-type.travel { background-color: var(--esencia-travel); }
+
+/* Estados de pólizas */
+.status-badge {
+    display: inline-block;
+    padding: var(--esencia-spacing-xs) var(--esencia-spacing-sm);
+    border-radius: var(--esencia-border-radius-small);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.status-active { 
+    background-color: var(--esencia-success); 
+    color: var(--esencia-text-light);
+}
+.status-inactive { 
+    background-color: var(--esencia-text-muted); 
+    color: var(--esencia-text-light);
+}
+.status-pending { 
+    background-color: var(--esencia-warning); 
+    color: var(--esencia-text-primary);
+}
+.status-cancelled { 
+    background-color: var(--esencia-danger); 
+    color: var(--esencia-text-light);
+}
+.status-expired { 
+    background-color: var(--esencia-travel); 
+    color: var(--esencia-text-light);
+}
+
+/* Botones */
+.btn-esencia {
+    background: var(--esencia-primary);
+    color: var(--esencia-text-light);
+    border: none;
+    padding: var(--esencia-spacing-sm) var(--esencia-spacing-lg);
+    border-radius: var(--esencia-border-radius-small);
+    font-family: var(--esencia-font-primary);
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-esencia:hover {
+    background: var(--esencia-primary-dark);
+    transform: translateY(-1px);
+    box-shadow: var(--esencia-shadow-medium);
+}
+
+.btn-esencia-secondary {
+    background: var(--esencia-secondary);
+    color: var(--esencia-text-primary);
+    border: 1px solid var(--esencia-border-medium);
+}
+
+.btn-esencia-secondary:hover {
+    background: var(--esencia-secondary-dark);
+}
+
+/* Responsive */
+@media (max-width: 767.98px) {
+    footer {
+        padding: 40px 0;
+    }
+    .container {
+        max-width: 90%;
+    }
+    .logo img {
+        width: 180px;
+    }
+    .datos {
+        flex-direction: column;
+        margin-bottom: 50px;
+    }
+    .proteccion {
+        white-space: break-spaces;
+    }
+}
+
+@media (max-width: 991.98px) {
+    .container {
+        max-width: 700px;
+    }
+    .row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .datos {
+        flex: auto;
+    }
+    .datos div {
+        padding-left: 0px;
+        width: 100%;
+    }
+    .datos div:first-child {
+        margin-right: 50px;
+    }
+    .logo img {
+        margin-bottom: 30px;
+    }
+    .datos {
+        margin-bottom: 30px;
+    }
+    .legales {
+        width: 50%;
+    }
+}
+
+@media (max-width: 1199.98px) {
+    .container {
+        max-width: 900px;
+    }
+} 
