@@ -154,16 +154,14 @@ class ExcelProcessorService
      */
     private function extractOperationFromRow(Worksheet $worksheet, int $row, string $operationType): ?array
     {
-        // Mapeo de columnas A-I
+        // Mapeo de columnas A-K según la estructura real del Excel
         $tipoOper = $this->cleanValue($worksheet->getCell('A' . $row)->getValue());
         $tipoEspecie = $this->cleanValue($worksheet->getCell('B' . $row)->getValue());
         $codigoEspecie = $this->cleanValue($worksheet->getCell('C' . $row)->getValue());
         $cantEspecies = $this->cleanValue($worksheet->getCell('D' . $row)->getValue());
         $codigoAfectacion = $this->cleanValue($worksheet->getCell('E' . $row)->getValue());
         $tipoValuacion = $this->cleanValue($worksheet->getCell('F' . $row)->getValue());
-        $fechaMovimiento = $this->cleanValue($worksheet->getCell('G' . $row)->getValue());
-        $precioCompra = $this->cleanValue($worksheet->getCell('H' . $row)->getValue());
-        $fechaLiquidacion = $this->cleanValue($worksheet->getCell('I' . $row)->getValue());
+        $fechaMovimiento = $this->cleanValue($this->getCellValueAsString($worksheet, 'G' . $row));
         
         // Verificar si la fila tiene datos válidos
         if (empty($tipoOper) && empty($tipoEspecie) && empty($codigoEspecie)) {
@@ -172,9 +170,8 @@ class ExcelProcessorService
         
         // Convertir fechas de DD/MM/YYYY a YYYY-MM-DD
         $fechaMovimiento = $this->convertDate($fechaMovimiento);
-        $fechaLiquidacion = $this->convertDate($fechaLiquidacion);
         
-        return [
+        $operation = [
             'tipo_operacion' => $operationType,
             'tipo_especie' => $tipoEspecie,
             'codigo_especie' => $codigoEspecie,
@@ -182,10 +179,40 @@ class ExcelProcessorService
             'codigo_afectacion' => $codigoAfectacion,
             'tipo_valuacion' => $tipoValuacion,
             'fecha_movimiento' => $fechaMovimiento,
-            'fecha_liquidacion' => $fechaLiquidacion,
-            'precio_compra' => $precioCompra,
             'row_number' => $row
         ];
+        
+        // Agregar campos específicos según el tipo de operación
+        if ($operationType === 'C') {
+            // Para compras: H=precio_compra, I=fecha_liquidacion
+            $precioCompra = $this->cleanValue($worksheet->getCell('H' . $row)->getValue());
+            $fechaLiquidacion = $this->cleanValue($this->getCellValueAsString($worksheet, 'I' . $row));
+            
+            // Log para debuggear precio de compra
+            \Log::info('Procesando precio de compra', [
+                'row' => $row,
+                'cell_h_raw' => $worksheet->getCell('H' . $row)->getValue(),
+                'precio_compra_cleaned' => $precioCompra,
+                'tipo_especie' => $tipoEspecie,
+                'codigo_especie' => $codigoEspecie
+            ]);
+            
+            $operation['precio_compra'] = $precioCompra;
+            $operation['fecha_liquidacion'] = $this->convertDate($fechaLiquidacion);
+        } elseif ($operationType === 'V') {
+            // Para ventas: H=fecha_pase_vt, I=precio_pase_vt, J=fecha_liquidacion, K=precio_venta
+            $fechaPaseVt = $this->cleanValue($this->getCellValueAsString($worksheet, 'H' . $row));
+            $precioPaseVt = $this->cleanValue($worksheet->getCell('I' . $row)->getValue());
+            $fechaLiquidacion = $this->cleanValue($this->getCellValueAsString($worksheet, 'J' . $row));
+            $precioVenta = $this->cleanValue($worksheet->getCell('K' . $row)->getValue());
+            
+            $operation['fecha_pase_vt'] = $this->convertDate($fechaPaseVt);
+            $operation['precio_pase_vt'] = $precioPaseVt;
+            $operation['fecha_liquidacion'] = $this->convertDate($fechaLiquidacion);
+            $operation['precio_venta'] = $precioVenta;
+        }
+        
+        return $operation;
     }
     
     /**
@@ -295,6 +322,32 @@ class ExcelProcessorService
     }
     
     /**
+     * Obtener valor de celda como string, forzando la lectura como texto para fechas
+     */
+    private function getCellValueAsString(Worksheet $worksheet, string $cellAddress)
+    {
+        $cell = $worksheet->getCell($cellAddress);
+        
+        // Si la celda tiene formato de fecha, intentar obtener el valor como string
+        if ($cell->getDataType() === \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_NUMERIC && 
+            \PhpOffice\PhpSpreadsheet\Shared\Date::isDateTime($cell)) {
+            
+            try {
+                // Intentar obtener el valor como string formateado
+                $formattedValue = $cell->getFormattedValue();
+                if (!empty($formattedValue)) {
+                    return $formattedValue;
+                }
+            } catch (\Exception $e) {
+                \Log::debug("Error al obtener valor formateado de celda {$cellAddress}: " . $e->getMessage());
+            }
+        }
+        
+        // Si no se puede obtener como string formateado, usar el valor normal
+        return $cell->getValue();
+    }
+    
+    /**
      * Convertir valores decimales con comas a formato MySQL (puntos)
      */
     private function convertDecimalValue($value)
@@ -374,26 +427,81 @@ class ExcelProcessorService
             return null;
         }
         
+        // Log para debugging
+        \Log::debug("ConvertDate - Valor original: '{$date}' (tipo: " . gettype($date) . ")");
+        
         // Si ya está en formato YYYY-MM-DD, retornarlo
         if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            \Log::debug("ConvertDate - Ya está en formato YYYY-MM-DD: {$date}");
             return $date;
         }
         
         // Si está en formato DD/MM/YYYY, convertirlo
         if (preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $date)) {
             $parts = explode('/', $date);
-            return $parts[2] . '-' . $parts[1] . '-' . $parts[0];
+            $result = $parts[2] . '-' . $parts[1] . '-' . $parts[0];
+            \Log::debug("ConvertDate - Convertido de DD/MM/YYYY: {$date} → {$result}");
+            return $result;
         }
         
         // Si es un número de Excel, convertirlo
         if (is_numeric($date)) {
             try {
-                return Carbon::instance(\PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($date))->format('Y-m-d');
+                // Validar que el número de Excel esté en un rango razonable
+                $minExcelDate = 1; // 1900-01-01
+                $maxExcelDate = 73050; // 2100-01-01
+                
+                if ($date < $minExcelDate || $date > $maxExcelDate) {
+                    \Log::warning("ConvertDate - Número de Excel fuera de rango válido: {$date}");
+                    return null;
+                }
+                
+                $excelDate = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($date);
+                $excelDate->setTimezone(new \DateTimeZone('UTC'));
+                $original = $excelDate->format('Y-m-d');
+                \Log::debug("ConvertDate - Fecha original de Excel (UTC): {$original}");
+                $excelDate->modify('+1 day');
+                $modificado = $excelDate->format('Y-m-d');
+                \Log::debug("ConvertDate - Fecha tras sumar 1 día: {$modificado}");
+                $result = Carbon::instance($excelDate)->format('Y-m-d');
+                
+                // Validar que la fecha resultante sea razonable (entre 1900 y 2100)
+                $year = (int) substr($result, 0, 4);
+                if ($year < 1900 || $year > 2100) {
+                    \Log::warning("ConvertDate - Año resultante fuera de rango: {$result} (número Excel: {$date})");
+                    return null;
+                }
+                
+                \Log::debug("ConvertDate - Convertido de número Excel (corrigiendo desfase): {$date} → {$result}");
+                return $result;
             } catch (\Exception $e) {
+                \Log::error("ConvertDate - Error al convertir número Excel {$date}: " . $e->getMessage());
                 return null;
             }
         }
         
+        // Intentar otros formatos de fecha comunes
+        $formats = [
+            'd-m-Y',    // 19-06-2025
+            'Y/m/d',    // 2025/06/19
+            'd.m.Y',    // 19.06.2025
+            'm/d/Y',    // 06/19/2025 (formato americano)
+        ];
+        
+        foreach ($formats as $format) {
+            try {
+                $dateObj = \DateTime::createFromFormat($format, $date);
+                if ($dateObj) {
+                    $result = $dateObj->format('Y-m-d');
+                    \Log::debug("ConvertDate - Convertido con formato {$format}: {$date} → {$result}");
+                    return $result;
+                }
+            } catch (\Exception $e) {
+                continue;
+            }
+        }
+        
+        \Log::warning("ConvertDate - No se pudo convertir la fecha: '{$date}'");
         return null;
     }
     
@@ -469,7 +577,92 @@ class ExcelProcessorService
     }
     
     /**
-     * Generar JSON para SSN
+     * Formatear fecha para SSN (DDMMYYYY)
+     */
+    public function formatDateForSSN(?string $date): string
+    {
+        if (!$date || $date === '') {
+            return '';
+        }
+        
+        try {
+            $dateObj = \DateTime::createFromFormat('Y-m-d', $date);
+            if ($dateObj) {
+                return $dateObj->format('dmY');
+            }
+            
+            // Intentar otros formatos comunes
+            $dateObj = \DateTime::createFromFormat('d/m/Y', $date);
+            if ($dateObj) {
+                return $dateObj->format('dmY');
+            }
+            
+            // Si no se puede parsear, devolver string vacío
+            return '';
+        } catch (\Exception $e) {
+            return '';
+        }
+    }
+    
+    /**
+     * Generar JSON para SSN de presentaciones mensuales
+     */
+    public function generateMonthlySsnJson(array $stocks, string $month): array
+    {
+        $ssnStocks = [];
+        
+        foreach ($stocks as $index => $stock) {
+            try {
+                // Validar que el stock tenga los campos mínimos requeridos
+                if (!isset($stock['tipo']) || !isset($stock['tipo_especie']) || !isset($stock['codigo_especie'])) {
+                    \Log::warning("Stock {$index} no tiene campos mínimos requeridos", $stock);
+                    continue;
+                }
+                
+                $ssnStock = [
+                    'tipo' => $stock['tipo'],
+                    'tipoEspecie' => $stock['tipo_especie'],
+                    'codigoEspecie' => $stock['codigo_especie'],
+                    'cantidadDevengadoEspecies' => (float) ($stock['cantidad_devengado_especies'] ?? 0),
+                    'cantidadPercibidoEspecies' => (float) ($stock['cantidad_percibido_especies'] ?? 0),
+                    'codigoAfectacion' => $stock['codigo_afectacion'] ?? '',
+                    'tipoValuacion' => $stock['tipo_valuacion'] ?? '',
+                    'conCotizacion' => $stock['con_cotizacion'] ?? false,
+                    'libreDisponibilidad' => $stock['libre_disponibilidad'] ?? false,
+                    'emisorGrupoEconomico' => $stock['emisor_grupo_economico'] ?? false,
+                    'emisorArtRet' => $stock['emisor_art_ret'] ?? false,
+                    'previsionDesvalorizacion' => $stock['prevision_desvalorizacion'] !== null && $stock['prevision_desvalorizacion'] !== '' ? (float) $stock['prevision_desvalorizacion'] : 0,
+                    'valorContable' => $stock['valor_contable'] !== null && $stock['valor_contable'] !== '' ? (float) $stock['valor_contable'] : 0,
+                    'fechaPaseVt' => $this->formatDateForSSN($stock['fecha_pase_vt'] ?? ''),
+                    'precioPaseVt' => $stock['precio_pase_vt'] !== null && $stock['precio_pase_vt'] !== '' ? (float) $stock['precio_pase_vt'] : 0,
+                    'enCustodia' => $stock['en_custodia'] ?? false,
+                    'financiera' => $stock['financiera'] ?? false,
+                    'valorFinanciero' => $stock['valor_financiero'] !== null && $stock['valor_financiero'] !== '' ? (float) $stock['valor_financiero'] : 0,
+                ];
+                
+                $ssnStocks[] = $ssnStock;
+                
+            } catch (\Exception $e) {
+                \Log::error("Error procesando stock {$index} para SSN", [
+                    'stock' => $stock,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+                continue;
+            }
+        }
+        
+        return [
+            'codigoCompania' => config('services.ssn.cia', '0001'),
+            'cronograma' => $month,
+            'tipoEntrega' => 'MENSUAL',
+            'stocks' => $ssnStocks,
+            'totalStocks' => count($ssnStocks)
+        ];
+    }
+
+    /**
+     * Generar JSON para SSN (solo para preview)
      */
     public function generateSsnJson(array $operations, string $week): array
     {
@@ -483,61 +676,59 @@ class ExcelProcessorService
                 'cantEspecies' => (float) $operation['cant_especies'],
                 'codigoAfectacion' => $operation['codigo_afectacion'],
                 'tipoValuacion' => $operation['tipo_valuacion'],
-                'fechaMovimiento' => $operation['fecha_movimiento'],
-                'fechaLiquidacion' => $operation['fecha_liquidacion'],
+                'fechaMovimiento' => $this->formatDateForSSN($operation['fecha_movimiento']),
+                'fechaLiquidacion' => $this->formatDateForSSN($operation['fecha_liquidacion']),
             ];
             
             // Agregar campos específicos según el tipo de operación
-            if ($operation['tipo_operacion'] === 'C' && !empty($operation['precio_compra'])) {
-                $ssnOperation['precioCompra'] = (float) $operation['precio_compra'];
+            if ($operation['tipo_operacion'] === 'C') {
+                $ssnOperation['precioCompra'] = isset($operation['precio_compra']) ? (float) $operation['precio_compra'] : 0;
+            } elseif ($operation['tipo_operacion'] === 'V') {
+                $ssnOperation['precioVenta'] = isset($operation['precio_venta']) ? (float) $operation['precio_venta'] : 0;
+
+                // Normalizar valores
+                $tipoEspecie = strtoupper(trim($operation['tipo_especie'] ?? ''));
+                $tipoValuacion = strtoupper(trim($operation['tipo_valuacion'] ?? ''));
+                $debeIncluirPaseVT = in_array($tipoEspecie, ['TP', 'ON']) && $tipoValuacion === 'T';
+
+                // Log para debuggear
+                \Log::info('Procesando operación de venta para SSN', [
+                    'tipo_especie' => $tipoEspecie,
+                    'tipo_valuacion' => $tipoValuacion,
+                    'debe_incluir_pase_vt' => $debeIncluirPaseVT,
+                    'operation_id' => $operation['id'] ?? 'unknown'
+                ]);
+
+                // Siempre incluir los campos, pero con valores apropiados según las condiciones
+                if ($debeIncluirPaseVT) {
+                    $fechaPaseVT = $this->formatDateForSSN($operation['fecha_pase_vt']);
+                    $ssnOperation['fechaPaseVT'] = $fechaPaseVT;
+                    $ssnOperation['precioPaseVT'] = isset($operation['precio_pase_vt']) && $operation['precio_pase_vt'] !== null && $operation['precio_pase_vt'] !== "" ? (float) $operation['precio_pase_vt'] : "";
+                    
+                    \Log::info('Incluyendo campos PaseVT con valores', [
+                        'fechaPaseVT' => $ssnOperation['fechaPaseVT'],
+                        'precioPaseVT' => $ssnOperation['precioPaseVT']
+                    ]);
+                } else {
+                    // Incluir campos con string vacío cuando no corresponda
+                    $ssnOperation['fechaPaseVT'] = "";
+                    $ssnOperation['precioPaseVT'] = "";
+                    
+                    \Log::info('Incluyendo campos PaseVT vacíos', [
+                        'razon' => 'No cumple condiciones (TP/ON y T)'
+                    ]);
+                }
             }
             
             $ssnOperations[] = $ssnOperation;
         }
         
         return [
-            'semana' => $week,
+            'codigoCompania' => config('services.ssn.cia', '0001'),
+            'cronograma' => $week,
+            'tipoEntrega' => 'SEMANAL',
             'operaciones' => $ssnOperations,
             'totalOperaciones' => count($ssnOperations)
-        ];
-    }
-    
-    /**
-     * Generar JSON para SSN de presentaciones mensuales
-     */
-    public function generateMonthlySsnJson(array $stocks, string $month): array
-    {
-        $ssnStocks = [];
-        
-        foreach ($stocks as $stock) {
-            $ssnStock = [
-                'tipo' => $stock['tipo'],
-                'tipoEspecie' => $stock['tipo_especie'],
-                'codigoEspecie' => $stock['codigo_especie'],
-                'cantidadDevengadoEspecies' => (float) $stock['cantidad_devengado_especies'],
-                'cantidadPercibidoEspecies' => (float) $stock['cantidad_percibido_especies'],
-                'codigoAfectacion' => $stock['codigo_afectacion'],
-                'tipoValuacion' => $stock['tipo_valuacion'],
-                'conCotizacion' => $stock['con_cotizacion'],
-                'libreDisponibilidad' => $stock['libre_disponibilidad'],
-                'emisorGrupoEconomico' => $stock['emisor_grupo_economico'],
-                'emisorArtRet' => $stock['emisor_art_ret'],
-                'previsionDesvalorizacion' => $stock['prevision_desvalorizacion'],
-                'valorContable' => (float) $stock['valor_contable'],
-                'fechaPaseVt' => $stock['fecha_pase_vt'],
-                'precioPaseVt' => $stock['precio_pase_vt'],
-                'enCustodia' => $stock['en_custodia'],
-                'financiera' => $stock['financiera'],
-                'valorFinanciero' => $stock['valor_financiero'],
-            ];
-            
-            $ssnStocks[] = $ssnStock;
-        }
-        
-        return [
-            'mes' => $month,
-            'stocks' => $ssnStocks,
-            'totalStocks' => count($ssnStocks)
         ];
     }
 } 

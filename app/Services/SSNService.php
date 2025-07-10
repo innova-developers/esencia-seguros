@@ -21,9 +21,12 @@ class SSNService
     {
         $this->authService = $authService ?? app(SSNAuthService::class);
         $this->isMock = config('services.ssn.mock_enabled', false);
-        $this->baseUrl = $this->isMock 
-            ? config('services.ssn.base_url_testing', 'https://testri.ssn.gob.ar/api')
-            : config('services.ssn.base_url_production', 'https://ri.ssn.gob.ar/api');
+        $environment = config('services.ssn.environment', 'testing');
+        if ($environment === 'production') {
+            $this->baseUrl = config('services.ssn.base_url_production', 'https://ri.ssn.gob.ar/api');
+        } else {
+            $this->baseUrl = config('services.ssn.base_url_testing', 'https://testri.ssn.gob.ar/api');
+        }
         
         // Obtener token desde cache o sesión (fallback)
         $this->token = $this->authService->getCachedToken() ?? session('ssn_token');
@@ -64,6 +67,14 @@ class SSNService
         try {
             $endpoint = '/inv/entregaSemanal';
             $data = $presentation->getSsnJson();
+            
+            // Log del JSON que se va a enviar
+            Log::info('JSON enviando a SSN para presentación semanal', [
+                'presentation_id' => $presentation->id,
+                'cronograma' => $presentation->cronograma,
+                'json_completo' => $data,
+                'json_string' => json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
+            ]);
 
             return $this->makeRequest('POST', $endpoint, $data);
         } catch (Exception $e) {
@@ -208,7 +219,7 @@ class SSNService
         // Obtener el token más actualizado en cada request
         $token = $this->getValidToken();
         if ($token) {
-            $headers['Token'] = $token;
+            $headers['token'] = $token;
         }
 
         $request = Http::withHeaders($headers);
@@ -232,10 +243,24 @@ class SSNService
             ];
         }
 
+        // Loguear headers y body enviados en caso de error
+        Log::error('Error en petición a SSN', [
+            'url' => $url,
+            'method' => $method,
+            'headers_enviados' => $headers,
+            'body_enviado' => $data,
+            'params_enviados' => $params,
+            'status' => $response->status(),
+            'respuesta' => $response->body(),
+        ]);
+
         return [
             'success' => false,
             'error' => $response->body(),
             'status' => $response->status(),
+            'headers_enviados' => $headers,
+            'body_enviado' => $data,
+            'params_enviados' => $params,
         ];
     }
 

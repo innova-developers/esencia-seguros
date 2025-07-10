@@ -261,38 +261,10 @@ class WeeklyPresentationController extends Controller
             $operations = json_decode($request->input('operations'), true);
             $week = $request->input('week');
 
-            // Generar el JSON completo como lo hace Presentation::getSsnJson()
-            $codigoCompania = env('SSN_CIA', '1');
-            
-            $ssnJson = [
-                'codigoCompania' => $codigoCompania,
-                'cronograma' => $week,
-                'tipoEntrega' => 'Semanal',
-                'operaciones' => []
-            ];
+            // Usar el método del servicio para generar el JSON de preview
+            $ssnJson = $this->excelProcessor->generateSsnJson($operations, $week);
 
-            // Convertir las operaciones al formato correcto
-            foreach ($operations as $operation) {
-                $ssnOperation = [
-                    'tipoOperacion' => $operation['tipo_operacion'],
-                    'tipoEspecie' => $operation['tipo_especie'],
-                    'codigoEspecie' => $operation['codigo_especie'],
-                    'cantEspecies' => (float) $operation['cant_especies'],
-                    'codigoAfectacion' => $operation['codigo_afectacion'],
-                    'tipoValuacion' => $operation['tipo_valuacion'],
-                    'fechaMovimiento' => $operation['fecha_movimiento'],
-                    'fechaLiquidacion' => $operation['fecha_liquidacion'],
-                ];
-                
-                // Agregar campos específicos según el tipo de operación
-                if ($operation['tipo_operacion'] === 'C' && !empty($operation['precio_compra'])) {
-                    $ssnOperation['precioCompra'] = (float) $operation['precio_compra'];
-                }
-                
-                $ssnJson['operaciones'][] = $ssnOperation;
-            }
-
-            ActivityLog::create([
+            \App\Domain\Models\ActivityLog::create([
                 'user_id' => auth()->id(),
                 'action' => 'JSON_GENERATED',
                 'description' => "JSON generado para la semana: {$week}",
@@ -310,7 +282,7 @@ class WeeklyPresentationController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            ActivityLog::create([
+            \App\Domain\Models\ActivityLog::create([
                 'user_id' => auth()->id(),
                 'action' => 'JSON_GENERATION_ERROR',
                 'description' => "Error al generar JSON para la semana: {$week}",
@@ -565,17 +537,36 @@ class WeeklyPresentationController extends Controller
 
             // Guardar operaciones
             foreach ($operations as $op) {
-                $presentation->weeklyOperations()->create([
+                $operationData = [
                     'tipo_operacion' => $op['tipo_operacion'],
                     'tipo_especie' => $op['tipo_especie'],
                     'codigo_especie' => $op['codigo_especie'],
                     'cant_especies' => $op['cant_especies'],
                     'codigo_afectacion' => $op['codigo_afectacion'],
                     'tipo_valuacion' => $op['tipo_valuacion'],
-                    'fecha_movimiento' => $op['fecha_movimiento'],
-                    'fecha_liquidacion' => $op['fecha_liquidacion'],
-                    'precio_compra' => $op['precio_compra'],
-                ]);
+                    'fecha_movimiento' => $this->formatDateForDatabase($op['fecha_movimiento']),
+                    'fecha_liquidacion' => $this->formatDateForDatabase($op['fecha_liquidacion']),
+                ];
+                
+                // Agregar campos específicos según el tipo de operación
+                if ($op['tipo_operacion'] === 'C') {
+                    $operationData['precio_compra'] = $op['precio_compra'] ?? null;
+                    
+                    // Log para debuggear
+                    \Log::info('Guardando operación de compra', [
+                        'tipo_operacion' => $op['tipo_operacion'],
+                        'precio_compra_original' => $op['precio_compra'] ?? 'NULL',
+                        'precio_compra_final' => $operationData['precio_compra'],
+                        'operation_data' => $operationData
+                    ]);
+                    
+                } elseif ($op['tipo_operacion'] === 'V') {
+                    $operationData['precio_venta'] = $op['precio_venta'] ?? null;
+                    $operationData['fecha_pase_vt'] = $this->formatDateForDatabase($op['fecha_pase_vt'] ?? null);
+                    $operationData['precio_pase_vt'] = $op['precio_pase_vt'] ?? null;
+                }
+                
+                $presentation->weeklyOperations()->create($operationData);
             }
 
             $presentation->estado = 'CARGADO';
@@ -643,8 +634,9 @@ class WeeklyPresentationController extends Controller
         ]);
 
         try {
-            // Generar el JSON que se enviará a SSN
-            $ssnJson = $presentation->getSsnJson();
+            // Generar el JSON que se enviará a SSN usando el servicio con la lógica correcta
+            $operations = $presentation->weeklyOperations->toArray();
+            $ssnJson = $this->excelProcessor->generateSsnJson($operations, $presentation->cronograma);
             
             // Crear directorio para archivos JSON si no existe
             $jsonDirectory = storage_path('app/presentations/json');
@@ -694,10 +686,14 @@ class WeeklyPresentationController extends Controller
                     'ssn_status' => $response['data']['status'] ?? 'unknown',
                     'total_operations' => $presentation->weeklyOperations->count(),
                     'json_file_path' => $presentation->json_file_path,
+                    'ssn_response' => $response,
                 ]),
             ]);
 
-            return redirect()->route('weekly-presentations.show', $presentation->id)->with('success', 'Presentación enviada a SSN correctamente.');
+            // Mostrar mensaje de éxito y la respuesta completa de la SSN
+            return redirect()->route('weekly-presentations.show', $presentation->id)
+                ->with('success', 'Presentación enviada a SSN correctamente.')
+                ->with('ssn_response', json_encode($response, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 
         } catch (\Exception $e) {
             // Log del error
@@ -894,5 +890,50 @@ class WeeklyPresentationController extends Controller
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => 'attachment; filename="' . $filename . '"',
         ]);
+    }
+
+    /**
+     * Formatear fecha para la base de datos (DDMMYYYY)
+     */
+    private function formatDateForDatabase(?string $dateString): ?string
+    {
+        if (empty($dateString)) {
+            return null;
+        }
+        
+        try {
+            // Si ya está en formato DDMMYYYY, devolverlo tal como está
+            if (preg_match('/^\d{8}$/', $dateString)) {
+                return $dateString;
+            }
+            
+            // Si está en formato YYYY-MM-DD, convertirlo a DDMMYYYY
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateString)) {
+                $date = \DateTime::createFromFormat('Y-m-d', $dateString);
+                if ($date) {
+                    return $date->format('dmY');
+                }
+            }
+            
+            // Si está en formato DD/MM/YYYY, convertirlo a DDMMYYYY
+            if (preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $dateString)) {
+                $date = \DateTime::createFromFormat('d/m/Y', $dateString);
+                if ($date) {
+                    return $date->format('dmY');
+                }
+            }
+            
+            \Log::warning('Formato de fecha no reconocido para conversión a DDMMYYYY', [
+                'date_string' => $dateString
+            ]);
+            return null;
+            
+        } catch (\Exception $e) {
+            \Log::error('Error al formatear fecha para la base de datos', [
+                'date_string' => $dateString,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
     }
 } 

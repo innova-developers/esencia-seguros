@@ -134,6 +134,9 @@
                                         <th>Fecha Movim.</th>
                                         <th>Precio Compra</th>
                                         <th>Fecha Liquidac.</th>
+                                        <th>Precio Venta</th>
+                                        <th>Fecha Pase VT</th>
+                                        <th>Precio Pase VT</th>
                                     </tr>
                                 </thead>
                                 <tbody id="previewTableBody">
@@ -527,6 +530,21 @@
             // Llenar tabla con datos
             data.operations.forEach(operation => {
                 const row = document.createElement('tr');
+                
+                // Determinar qué campos mostrar según el tipo de operación
+                let precioCompraField = '-';
+                let precioVentaField = '-';
+                let fechaPaseField = '-';
+                let precioPaseField = '-';
+                
+                if (operation.tipo_operacion === 'C') {
+                    precioCompraField = operation.precio_compra ? parseFloat(operation.precio_compra).toFixed(4) : '-';
+                } else if (operation.tipo_operacion === 'V') {
+                    precioVentaField = operation.precio_venta ? parseFloat(operation.precio_venta).toFixed(4) : '-';
+                    fechaPaseField = formatDate(operation.fecha_pase_vt);
+                    precioPaseField = operation.precio_pase_vt ? parseFloat(operation.precio_pase_vt).toFixed(4) : '-';
+                }
+                
                 row.innerHTML = `
                     <td><span class="badge bg-${getOperationBadgeColor(operation.tipo_operacion)}">${getOperationLabel(operation.tipo_operacion)}</span></td>
                     <td>${operation.tipo_especie || '-'}</td>
@@ -535,8 +553,11 @@
                     <td>${operation.codigo_afectacion || '-'}</td>
                     <td>${operation.tipo_valuacion || '-'}</td>
                     <td>${formatDate(operation.fecha_movimiento)}</td>
-                    <td>${operation.precio_compra ? parseFloat(operation.precio_compra).toFixed(4) : '-'}</td>
+                    <td>${precioCompraField}</td>
                     <td>${formatDate(operation.fecha_liquidacion)}</td>
+                    <td>${precioVentaField}</td>
+                    <td>${fechaPaseField}</td>
+                    <td>${precioPaseField}</td>
                 `;
                 tableBody.appendChild(row);
             });
@@ -610,8 +631,22 @@
 
         function formatDate(dateString) {
             if (!dateString) return '-';
+            
+            // Si la fecha está en formato YYYY-MM-DD, parsearla manualmente para evitar desfases de zona horaria
+            if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                const parts = dateString.split('-');
+                const year = parts[0];
+                const month = parts[1];
+                const day = parts[2];
+                return `${day}/${month}/${year}`;
+            }
+            
+            // Para otros formatos, usar el método original
             const date = new Date(dateString);
-            return date.toLocaleDateString('es-ES');
+            const day = date.getDate().toString().padStart(2, '0');
+            const month = (date.getMonth() + 1).toString().padStart(2, '0');
+            const year = date.getFullYear();
+            return `${day}/${month}/${year}`;
         }
 
         // Mostrar el botón Guardar Borrador solo si hay datos cargados

@@ -133,27 +133,45 @@ class Presentation extends Model
     }
 
     /**
+     * Formatear fecha para SSN (DDMMYYYY)
+     */
+    private function formatDateForSSN(?string $date): ?string
+    {
+        if (!$date) {
+            return null;
+        }
+        
+        try {
+            $dateObj = \DateTime::createFromFormat('Y-m-d', $date);
+            if ($dateObj) {
+                return $dateObj->format('dmY');
+            }
+            
+            // Intentar otros formatos comunes
+            $dateObj = \DateTime::createFromFormat('d/m/Y', $date);
+            if ($dateObj) {
+                return $dateObj->format('dmY');
+            }
+            
+            return $date; // Si no se puede parsear, devolver como está
+        } catch (\Exception $e) {
+            return $date;
+        }
+    }
+
+    /**
      * Obtener el JSON para enviar a SSN
      */
     public function getSsnJson(): array
     {
-        $json = [
-            'codigoCompania' => $this->codigo_compania,
-            'cronograma' => $this->cronograma,
-            'tipoEntrega' => $this->tipo_entrega,
-        ];
-
-        if ($this->isSemanal()) {
-            $json['operaciones'] = $this->weeklyOperations->map(function ($operation) {
-                return $operation->getSsnJson();
-            })->toArray();
+        // Usar el servicio para generar el JSON correcto según el tipo de presentación
+        if ($this->isMensual()) {
+            $stocks = $this->monthlyStocks ? $this->monthlyStocks->toArray() : [];
+            return app(\App\Services\ExcelProcessorService::class)->generateMonthlySsnJson($stocks, $this->cronograma);
         } else {
-            $json['stocks'] = $this->monthlyStocks->map(function ($stock) {
-                return $stock->getSsnJson();
-            })->toArray();
+            $operations = $this->weeklyOperations ? $this->weeklyOperations->toArray() : [];
+            return app(\App\Services\ExcelProcessorService::class)->generateSsnJson($operations, $this->cronograma);
         }
-
-        return $json;
     }
 
     /**

@@ -17,6 +17,12 @@
             <div class="card-body">
                 @if(session('success'))
                     <div class="alert alert-success">{{ session('success') }}</div>
+                    @if(session('ssn_response'))
+                        <div class="alert alert-info mt-2">
+                            <strong>Respuesta de la SSN:</strong>
+                            <pre style="background:#f8f9fa; border-radius:4px; padding:10px;">{{ session('ssn_response') }}</pre>
+                        </div>
+                    @endif
                 @endif
                 @if(session('error'))
                     <div class="alert alert-danger">{{ session('error') }}</div>
@@ -85,6 +91,9 @@
                                 <th>Fecha Movim.</th>
                                 <th>Precio Compra</th>
                                 <th>Fecha Liquidac.</th>
+                                <th>Precio Venta</th>
+                                <th>Fecha Pase VT</th>
+                                <th>Precio Pase VT</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -102,6 +111,15 @@
                                     'J' => 'CANJE',
                                     default => $op->tipo_operacion,
                                 };
+                                
+                                // Determinar qué precios mostrar según el tipo de operación
+                                $precioCompra = '';
+                                $precioVenta = '';
+                                if ($op->tipo_operacion === 'C') {
+                                    $precioCompra = $op->precio_compra ? number_format($op->precio_compra, 4, ',', '.') : '';
+                                } elseif ($op->tipo_operacion === 'V') {
+                                    $precioVenta = $op->precio_venta ? number_format($op->precio_venta, 4, ',', '.') : '';
+                                }
                             @endphp
                             <tr>
                                 <td><span class="badge bg-{{ $badge }}">{{ $label }}</span></td>
@@ -110,9 +128,12 @@
                                 <td>{{ $op->cant_especies ? number_format($op->cant_especies, 0, ',', '.') : '' }}</td>
                                 <td>{{ $op->codigo_afectacion ?? '' }}</td>
                                 <td>{{ $op->tipo_valuacion ?? '' }}</td>
-                                <td>{{ $op->fecha_movimiento ? \Carbon\Carbon::parse($op->fecha_movimiento)->format('d/m/Y') : '' }}</td>
-                                <td>{{ $op->precio_compra ? number_format($op->precio_compra, 4, ',', '.') : '' }}</td>
-                                <td>{{ $op->fecha_liquidacion ? \Carbon\Carbon::parse($op->fecha_liquidacion)->format('d/m/Y') : '' }}</td>
+                                <td>{{ $op->fecha_movimiento_display ?? '' }}</td>
+                                <td>{{ $precioCompra }}</td>
+                                <td>{{ $op->fecha_liquidacion_display ?? '' }}</td>
+                                <td>{{ $precioVenta }}</td>
+                                <td>{{ $op->fecha_pase_vt_display ?? '' }}</td>
+                                <td>{{ $op->precio_pase_vt ? number_format($op->precio_pase_vt, 4, ',', '.') : '' }}</td>
                             </tr>
                             @endforeach
                         </tbody>
@@ -127,7 +148,7 @@
                         <button class="btn btn-primary btn-lg" id="confirmarPresentacionBtn">
                             <i class="fas fa-check me-2"></i>Confirmar Presentación
                         </button>
-                        <button type="button" class="btn btn-outline-info btn-lg ms-3" data-json='@json($presentation->getSsnJson())' onclick="showJsonModal(this)">
+                        <button type="button" class="btn btn-outline-info btn-lg ms-3" data-json='@json(app(\App\Services\ExcelProcessorService::class)->generateSsnJson($presentation->weeklyOperations->toArray(), $presentation->cronograma))' onclick="showJsonModal(this)">
                             <i class="fas fa-code me-2"></i>Ver JSON
                         </button>
                         <button type="button" class="btn btn-outline-primary btn-lg ms-3" onclick="showSsnParamsModal()">
@@ -145,7 +166,7 @@
                         <button class="btn btn-warning btn-lg" id="solicitarRectificacionBtn">
                             <i class="fas fa-exclamation me-2"></i>Solicitar Rectificación
                         </button>
-                        <button type="button" class="btn btn-outline-info btn-lg ms-3" data-json='@json($presentation->getSsnJson())' onclick="showJsonModal(this)">
+                        <button type="button" class="btn btn-outline-info btn-lg ms-3" data-json='@json(app(\App\Services\ExcelProcessorService::class)->generateSsnJson($presentation->weeklyOperations->toArray(), $presentation->cronograma))' onclick="showJsonModal(this)">
                             <i class="fas fa-code me-2"></i>Ver JSON
                         </button>
                         <button type="button" class="btn btn-outline-primary btn-lg ms-3" onclick="showSsnParamsModal()">
@@ -160,7 +181,7 @@
                         <a href="{{ route('weekly-presentations.index') }}" class="btn btn-secondary btn-lg">
                             <i class="fas fa-arrow-left me-2"></i>Volver
                         </a>
-                        <button type="button" class="btn btn-outline-info btn-lg ms-3" data-json='@json($presentation->getSsnJson())' onclick="showJsonModal(this)">
+                        <button type="button" class="btn btn-outline-info btn-lg ms-3" data-json='@json(app(\App\Services\ExcelProcessorService::class)->generateSsnJson($presentation->weeklyOperations->toArray(), $presentation->cronograma))' onclick="showJsonModal(this)">
                             <i class="fas fa-code me-2"></i>Ver JSON
                         </button>
                         <button type="button" class="btn btn-outline-primary btn-lg ms-3" onclick="showSsnParamsModal()">
@@ -178,7 +199,7 @@
                         <a href="{{ route('weekly-presentations.create', ['week' => $presentation->cronograma]) }}" class="btn btn-danger btn-lg">
                             <i class="fas fa-edit me-2"></i>Rectificar
                         </a>
-                        <button type="button" class="btn btn-outline-info btn-lg ms-3" data-json='@json($presentation->getSsnJson())' onclick="showJsonModal(this)">
+                        <button type="button" class="btn btn-outline-info btn-lg ms-3" data-json='@json(app(\App\Services\ExcelProcessorService::class)->generateSsnJson($presentation->weeklyOperations->toArray(), $presentation->cronograma))' onclick="showJsonModal(this)">
                             <i class="fas fa-code me-2"></i>Ver JSON
                         </button>
                         <button type="button" class="btn btn-outline-primary btn-lg ms-3" onclick="showSsnParamsModal()">
@@ -220,6 +241,9 @@
                 <th>Fecha Movim.</th>
                 <th>Precio Compra</th>
                 <th>Fecha Liquidac.</th>
+                <th>Precio Venta</th>
+                <th>Fecha Pase VT</th>
+                <th>Precio Pase VT</th>
               </tr>
             </thead>
             <tbody>
@@ -237,6 +261,15 @@
                       'J' => 'CANJE',
                       default => $op->tipo_operacion,
                   };
+                  
+                  // Determinar qué precios mostrar según el tipo de operación
+                  $precioCompra = '';
+                  $precioVenta = '';
+                  if ($op->tipo_operacion === 'C') {
+                      $precioCompra = $op->precio_compra ? number_format($op->precio_compra, 4, ',', '.') : '';
+                  } elseif ($op->tipo_operacion === 'V') {
+                      $precioVenta = $op->precio_venta ? number_format($op->precio_venta, 4, ',', '.') : '';
+                  }
               @endphp
               <tr>
                 <td><span class="badge bg-{{ $badge }}">{{ $label }}</span></td>
@@ -245,9 +278,12 @@
                 <td>{{ $op->cant_especies ? number_format($op->cant_especies, 0, ',', '.') : '' }}</td>
                 <td>{{ $op->codigo_afectacion ?? '' }}</td>
                 <td>{{ $op->tipo_valuacion ?? '' }}</td>
-                <td>{{ $op->fecha_movimiento ? \Carbon\Carbon::parse($op->fecha_movimiento)->format('d/m/Y') : '' }}</td>
-                <td>{{ $op->precio_compra ? number_format($op->precio_compra, 4, ',', '.') : '' }}</td>
-                <td>{{ $op->fecha_liquidacion ? \Carbon\Carbon::parse($op->fecha_liquidacion)->format('d/m/Y') : '' }}</td>
+                <td>{{ $op->fecha_movimiento_display ?? '' }}</td>
+                <td>{{ $precioCompra }}</td>
+                <td>{{ $op->fecha_liquidacion_display ?? '' }}</td>
+                <td>{{ $precioVenta }}</td>
+                <td>{{ $op->fecha_pase_vt_display ?? '' }}</td>
+                <td>{{ $op->precio_pase_vt ? number_format($op->precio_pase_vt, 4, ',', '.') : '' }}</td>
               </tr>
               @endforeach
             </tbody>

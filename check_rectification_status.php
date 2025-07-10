@@ -198,7 +198,7 @@ function checkSSNStatus($presentation, $ssnConfig, $pdo) {
             CURLOPT_HTTPHEADER => [
                 'Content-Type' => 'application/json',
                 'Accept' => 'application/json',
-                'Token: ' . $token
+                'token: ' . $token
             ],
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_SSL_VERIFYHOST => 2,

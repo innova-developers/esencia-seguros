@@ -73,7 +73,6 @@ class TestSSNConnection extends Command
 
         try {
             $result = $authService->authenticate($username, $cia, $password);
-
             if ($result && $result['success']) {
                 $this->info('✅ Autenticación exitosa!');
                 $this->line("   Token: " . substr($result['token'], 0, 50) . '...');

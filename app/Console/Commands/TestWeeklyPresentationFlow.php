@@ -95,117 +95,114 @@ class TestWeeklyPresentationFlow extends Command
         // Paso 3: Simular operaciones de prueba
         $this->info('3️⃣ Simulando operaciones de prueba...');
         
+        // Crear operaciones de prueba
         $operations = [
             [
-                'tipo_operacion' => 'C', // Compra
-                'tipo_especie' => 'AC', // Acciones
-                'codigo_especie' => 'GGAL',
-                'cant_especies' => 100,
-                'codigo_afectacion' => '001',
-                'tipo_valuacion' => 'V', // Mercado
-                'fecha_movimiento' => '01072025', // DDMMYYYY
-                'fecha_liquidacion' => '03072025',
+                'tipo_operacion' => 'C',
+                'tipo_especie' => 'TP',
+                'codigo_especie' => 'AL30',
+                'cant_especies' => 1000.0,
+                'codigo_afectacion' => 'T',
+                'tipo_valuacion' => 'V',
+                'fecha_movimiento' => '2025-01-15',
+                'fecha_liquidacion' => '2025-01-16',
                 'precio_compra' => 150.50,
             ],
             [
-                'tipo_operacion' => 'V', // Venta
-                'tipo_especie' => 'TP', // Títulos Públicos
-                'codigo_especie' => 'BONAR2025',
-                'cant_especies' => 50,
-                'codigo_afectacion' => '002',
-                'tipo_valuacion' => 'T', // Técnico
-                'fecha_movimiento' => '02072025',
-                'fecha_liquidacion' => '04072025',
-                'precio_venta' => 95.25,
-            ],
-            [
-                'tipo_operacion' => 'C', // Compra
-                'tipo_especie' => 'FC', // Fondos Comunes
-                'codigo_especie' => 'FCI001',
-                'cant_especies' => 200.123456,
-                'codigo_afectacion' => '003',
-                'tipo_valuacion' => 'V', // Mercado
-                'fecha_movimiento' => '03072025',
-                'fecha_liquidacion' => '05072025',
-                'precio_compra' => 75.80,
-            ],
-        ];
-        
-        $this->info("✅ {$presentationData['id']} operaciones simuladas");
-        
-        // Paso 4: Simular estado CARGADO
-        $this->info('4️⃣ Simulando estado CARGADO...');
-        $presentationData['estado'] = 'CARGADO';
-        $this->info('✅ Estado actualizado a CARGADO');
-        
-        // Paso 5: Simular generación de JSON SSN
-        $this->info('5️⃣ Simulando generación de JSON para SSN...');
-        
-        $ssnJson = [
-            'compania' => $presentationData['codigo_compania'],
-            'cronograma' => $presentationData['cronograma'],
-            'tipoEntrega' => 'Semanal',
-            'operaciones' => array_map(function($op) {
-                return [
-                    'tipoOperacion' => $op['tipo_operacion'],
-                    'tipoEspecie' => $op['tipo_especie'],
-                    'codigoEspecie' => $op['codigo_especie'],
-                    'cantEspecies' => $op['cant_especies'],
-                    'codigoAfectacion' => $op['codigo_afectacion'],
-                    'tipoValuacion' => $op['tipo_valuacion'],
-                    'fechaMovimiento' => $op['fecha_movimiento'],
-                    'fechaLiquidacion' => $op['fecha_liquidacion'],
-                    'precioCompra' => $op['precio_compra'] ?? null,
-                    'precioVenta' => $op['precio_venta'] ?? null,
-                ];
-            }, $operations)
-        ];
-        
-        $this->info('✅ JSON simulado generado correctamente');
-        $this->line("   Total operaciones: " . count($ssnJson['operaciones']));
-        
-        // Paso 6: Simular envío a SSN
-        $this->info('6️⃣ Simulando envío a SSN...');
-        
-        // Simular respuesta exitosa de la SSN
-        $ssnResponse = [
-            'success' => true,
-            'data' => [
-                'id' => 'SSN_' . time(),
-                'estado' => 'RECIBIDO',
-                'mensaje' => 'Presentación recibida correctamente',
-                'fecha_recepcion' => now()->format('d/m/Y H:i:s'),
+                'tipo_operacion' => 'V',
+                'tipo_especie' => 'TP',
+                'codigo_especie' => 'AL30',
+                'cant_especies' => 500.0,
+                'codigo_afectacion' => 'T',
+                'tipo_valuacion' => 'V',
+                'fecha_movimiento' => '2025-01-17',
+                'fecha_liquidacion' => '2025-01-18',
+                'precio_venta' => 155.75,
+                'fecha_pase_vt' => '2025-01-19',
+                'precio_pase_vt' => 154.25,
             ]
         ];
         
-        $this->info('✅ Envío simulado exitoso a SSN');
-        $this->line("   ID SSN: " . $ssnResponse['data']['id']);
-        $this->line("   Estado: " . $ssnResponse['data']['estado']);
-        $this->line("   Mensaje: " . $ssnResponse['data']['mensaje']);
+        $this->info("✅ Operaciones simuladas creadas (" . count($operations) . " operaciones)");
         
-        // Simular actualización de presentación
-        $presentationData['estado'] = 'PRESENTADO';
-        $presentationData['ssn_response_id'] = $ssnResponse['data']['id'];
-        $presentationData['ssn_response_data'] = $ssnResponse['data'];
-        $presentationData['presented_at'] = now();
+        // Paso 4: Generar JSON para SSN
+        $this->info('4️⃣ Generando JSON para SSN...');
         
-        $this->info('✅ Presentación simulada actualizada a estado PRESENTADO');
+        $codigoCompania = config('services.ssn.cia', '0001');
         
-        // Paso 7: Verificar estado final
-        $this->info('7️⃣ Verificando estado final...');
-        $this->info("✅ Presentación finalizada:");
-        $this->line("   ID: {$presentationData['id']}");
-        $this->line("   Semana: {$presentationData['cronograma']}");
-        $this->line("   Estado: {$presentationData['estado']}");
-        $this->line("   ID SSN: {$presentationData['ssn_response_id']}");
-        $this->line("   Fecha envío: {$presentationData['presented_at']}");
+        $ssnJson = [
+            'codigoCompania' => $codigoCompania,
+            'cronograma' => $week,
+            'tipoEntrega' => 'Semanal',
+            'operaciones' => []
+        ];
+
+        // Convertir las operaciones al formato correcto
+        foreach ($operations as $operation) {
+            $ssnOperation = [
+                'tipoOperacion' => $operation['tipo_operacion'],
+                'tipoEspecie' => $operation['tipo_especie'],
+                'codigoEspecie' => $operation['codigo_especie'],
+                'cantEspecies' => (float) $operation['cant_especies'],
+                'codigoAfectacion' => $operation['codigo_afectacion'],
+                'tipoValuacion' => $operation['tipo_valuacion'],
+                'fechaMovimiento' => $this->formatDateForSSN($operation['fecha_movimiento']),
+                'fechaLiquidacion' => $this->formatDateForSSN($operation['fecha_liquidacion']),
+            ];
+            
+            // Agregar campos específicos según el tipo de operación
+            if ($operation['tipo_operacion'] === 'C' && !empty($operation['precio_compra'])) {
+                $ssnOperation['precioCompra'] = (float) $operation['precio_compra'];
+            }
+            
+            if ($operation['tipo_operacion'] === 'V') {
+                $ssnOperation['precioVenta'] = (float) $operation['precio_venta'];
+                $ssnOperation['fechaPaseVT'] = $this->formatDateForSSN($operation['fecha_pase_vt']);
+                $ssnOperation['precioPaseVT'] = (float) $operation['precio_pase_vt'];
+            }
+            
+            $ssnJson['operaciones'][] = $ssnOperation;
+        }
         
-        $this->info('🎉 ¡Prueba completada exitosamente!');
-        $this->info('💡 Este fue un flujo simulado. Para probar con base de datos real:');
-        $this->info('   1. Levanta la base de datos: docker-compose up -d mysql');
-        $this->info('   2. Ejecuta migraciones: php artisan migrate:fresh');
-        $this->info('   3. Vuelve a ejecutar este comando');
+        $this->info("✅ JSON generado correctamente");
+        $this->line("   Código Compañía: {$codigoCompania}");
+        $this->line("   Cronograma: {$week}");
+        $this->line("   Operaciones: " . count($ssnJson['operaciones']));
         
+        // Mostrar JSON para debugging
+        $this->info('📋 JSON que se enviará a SSN:');
+        $this->line(json_encode($ssnJson, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        
+        // Paso 5: Simular envío a SSN
+        $this->info('5️⃣ Simulando envío a SSN...');
+        
+        try {
+            $ssnService = app(SSNService::class);
+            $response = $ssnService->sendWeeklyPresentation($presentationData);
+            
+            if ($response['success']) {
+                $this->info('✅ Presentación enviada exitosamente');
+                $this->line("   ID: " . ($response['data']['id'] ?? 'N/A'));
+                $this->line("   Estado: " . ($response['data']['estado'] ?? 'N/A'));
+                $this->line("   Mensaje: " . ($response['data']['mensaje'] ?? 'N/A'));
+            } else {
+                $this->error('❌ Error al enviar presentación');
+                $this->line("   Error: " . ($response['error'] ?? 'Error desconocido'));
+                $this->line("   Status: " . ($response['status'] ?? 'N/A'));
+                
+                // Mostrar headers y body enviados si están disponibles
+                if (isset($response['headers_enviados'])) {
+                    $this->line("   Headers enviados: " . json_encode($response['headers_enviados']));
+                }
+                if (isset($response['body_enviado'])) {
+                    $this->line("   Body enviado: " . json_encode($response['body_enviado']));
+                }
+            }
+        } catch (Exception $e) {
+            $this->error('❌ Excepción al enviar presentación: ' . $e->getMessage());
+        }
+        
+        $this->info('🎉 Prueba completada');
         return 0;
     }
     
@@ -259,6 +256,33 @@ class TestWeeklyPresentationFlow extends Command
                 'created_at' => now(),
                 'updated_at' => now(),
             ]));
+        }
+    }
+
+    /**
+     * Formatear fecha para SSN (DDMMYYYY)
+     */
+    private function formatDateForSSN(?string $date): ?string
+    {
+        if (!$date) {
+            return null;
+        }
+        
+        try {
+            $dateObj = \DateTime::createFromFormat('Y-m-d', $date);
+            if ($dateObj) {
+                return $dateObj->format('dmY');
+            }
+            
+            // Intentar otros formatos comunes
+            $dateObj = \DateTime::createFromFormat('d/m/Y', $date);
+            if ($dateObj) {
+                return $dateObj->format('dmY');
+            }
+            
+            return $date; // Si no se puede parsear, devolver como está
+        } catch (\Exception $e) {
+            return $date;
         }
     }
 }

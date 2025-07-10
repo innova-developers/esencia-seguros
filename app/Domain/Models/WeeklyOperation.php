@@ -129,6 +129,101 @@ class WeeklyOperation extends Model
     }
 
     /**
+     * Formatear fecha para SSN (DDMMYYYY)
+     */
+    private function formatDateForSSN(?string $date): ?string
+    {
+        if (!$date) {
+            return null;
+        }
+        
+        try {
+            // Si ya está en formato DDMMYYYY, devolverlo tal como está
+            if (preg_match('/^\d{8}$/', $date)) {
+                return $date;
+            }
+            
+            // Si está en formato YYYY-MM-DD, convertirlo a DDMMYYYY
+            $dateObj = \DateTime::createFromFormat('Y-m-d', $date);
+            if ($dateObj) {
+                return $dateObj->format('dmY');
+            }
+            
+            // Si está en formato DD/MM/YYYY, convertirlo a DDMMYYYY
+            $dateObj = \DateTime::createFromFormat('d/m/Y', $date);
+            if ($dateObj) {
+                return $dateObj->format('dmY');
+            }
+            
+            return $date; // Si no se puede parsear, devolver como está
+        } catch (\Exception $e) {
+            return $date;
+        }
+    }
+
+    /**
+     * Formatear fecha para mostrar en vistas (DDMMYYYY -> DD/MM/YYYY)
+     */
+    public function formatDateForDisplay(?string $dateString): ?string
+    {
+        if (empty($dateString)) {
+            return null;
+        }
+        
+        try {
+            // Si está en formato DDMMYYYY, convertirlo a DD/MM/YYYY
+            if (preg_match('/^\d{8}$/', $dateString)) {
+                $day = substr($dateString, 0, 2);
+                $month = substr($dateString, 2, 2);
+                $year = substr($dateString, 4, 4);
+                return "{$day}/{$month}/{$year}";
+            }
+            
+            // Si ya está en formato DD/MM/YYYY, devolverlo tal como está
+            if (preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $dateString)) {
+                return $dateString;
+            }
+            
+            // Si está en formato YYYY-MM-DD, convertirlo a DD/MM/YYYY
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateString)) {
+                $date = \DateTime::createFromFormat('Y-m-d', $dateString);
+                if ($date) {
+                    return $date->format('d/m/Y');
+                }
+            }
+            
+            return $dateString; // Si no se puede parsear, devolver como está
+            
+        } catch (\Exception $e) {
+            return $dateString;
+        }
+    }
+
+    /**
+     * Obtener fecha de movimiento formateada para mostrar
+     */
+    public function getFechaMovimientoDisplayAttribute(): ?string
+    {
+        return $this->formatDateForDisplay($this->fecha_movimiento);
+    }
+
+    /**
+     * Obtener fecha de liquidación formateada para mostrar
+     */
+    public function getFechaLiquidacionDisplayAttribute(): ?string
+    {
+        return $this->formatDateForDisplay($this->fecha_liquidacion);
+    }
+
+    /**
+     * Obtener fecha de pase VT formateada para mostrar
+     */
+    public function getFechaPaseVtDisplayAttribute(): ?string
+    {
+        return $this->formatDateForDisplay($this->fecha_pase_vt);
+    }
+
+    /**
      * Obtener el JSON para enviar a SSN
      */
     public function getSsnJson(): array
@@ -157,12 +252,12 @@ class WeeklyOperation extends Model
         return array_merge($json, [
             'tipoEspecie' => $this->tipo_especie,
             'codigoEspecie' => $this->codigo_especie,
-            'cantEspecies' => $this->cant_especies,
+            'cantEspecies' => (float) $this->cant_especies,
             'codigoAfectacion' => $this->codigo_afectacion,
             'tipoValuacion' => $this->tipo_valuacion,
-            'fechaMovimiento' => $this->fecha_movimiento,
-            'precioCompra' => $this->precio_compra,
-            'fechaLiquidacion' => $this->fecha_liquidacion,
+            'fechaMovimiento' => $this->formatDateForSSN($this->fecha_movimiento),
+            'fechaLiquidacion' => $this->formatDateForSSN($this->fecha_liquidacion),
+            'precioCompra' => $this->precio_compra ? (float) $this->precio_compra : 0,
         ]);
     }
 
@@ -174,18 +269,49 @@ class WeeklyOperation extends Model
         $ventaJson = [
             'tipoEspecie' => $this->tipo_especie,
             'codigoEspecie' => $this->codigo_especie,
-            'cantEspecies' => $this->cant_especies,
+            'cantEspecies' => (float) $this->cant_especies,
             'codigoAfectacion' => $this->codigo_afectacion,
             'tipoValuacion' => $this->tipo_valuacion,
-            'fechaMovimiento' => $this->fecha_movimiento,
-            'fechaLiquidacion' => $this->fecha_liquidacion,
-            'precioVenta' => $this->precio_venta,
+            'fechaMovimiento' => $this->formatDateForSSN($this->fecha_movimiento),
+            'fechaLiquidacion' => $this->formatDateForSSN($this->fecha_liquidacion),
+            'precioVenta' => $this->precio_venta ? (float) $this->precio_venta : 0,
         ];
 
-        // Agregar campos específicos de VT si aplica
-        if ($this->fecha_pase_vt) {
-            $ventaJson['fechaPaseVT'] = $this->fecha_pase_vt;
-            $ventaJson['precioPaseVT'] = $this->precio_pase_vt;
+        // Verificar si debe incluir fechaPaseVT y precioPaseVT
+        $tipoEspecie = strtoupper(trim($this->tipo_especie ?? ''));
+        $tipoValuacion = strtoupper(trim($this->tipo_valuacion ?? ''));
+        $debeIncluirPaseVT = in_array($tipoEspecie, ['TP', 'ON']) && $tipoValuacion === 'T';
+        
+        // Log para debuggear
+        \Log::info('WeeklyOperation getVentaJson - Debug', [
+            'operation_id' => $this->id,
+            'tipo_especie' => $tipoEspecie,
+            'tipo_valuacion' => $tipoValuacion,
+            'debe_incluir_pase_vt' => $debeIncluirPaseVT,
+            'fecha_pase_vt_raw' => $this->fecha_pase_vt,
+            'precio_pase_vt_raw' => $this->precio_pase_vt,
+        ]);
+        
+        // Siempre incluir los campos, pero con valores apropiados según las condiciones
+        if ($debeIncluirPaseVT) {
+            $fechaPaseVT = $this->formatDateForSSN($this->fecha_pase_vt);
+            $ventaJson['fechaPaseVT'] = $fechaPaseVT !== null ? $fechaPaseVT : "";
+            $ventaJson['precioPaseVT'] = $this->precio_pase_vt !== null && $this->precio_pase_vt !== "" ? (float) $this->precio_pase_vt : "";
+            
+            \Log::info('WeeklyOperation getVentaJson - Incluyendo campos PaseVT con valores', [
+                'operation_id' => $this->id,
+                'fechaPaseVT_final' => $ventaJson['fechaPaseVT'],
+                'precioPaseVT_final' => $ventaJson['precioPaseVT']
+            ]);
+        } else {
+            // Incluir campos con string vacío cuando no corresponda
+            $ventaJson['fechaPaseVT'] = "";
+            $ventaJson['precioPaseVT'] = "";
+            
+            \Log::info('WeeklyOperation getVentaJson - Incluyendo campos PaseVT vacíos', [
+                'operation_id' => $this->id,
+                'razon' => 'No cumple condiciones (TP/ON y T)'
+            ]);
         }
 
         return array_merge($json, $ventaJson);
@@ -199,28 +325,21 @@ class WeeklyOperation extends Model
         $canjeJson = [
             'tipoEspecieA' => $this->tipo_especie_a,
             'codigoEspecieA' => $this->codigo_especie_a,
-            'cantEspeciesA' => $this->cant_especies_a,
+            'cantEspeciesA' => (float) $this->cant_especies_a,
             'codigoAfectacionA' => $this->codigo_afectacion_a,
             'tipoValuacionA' => $this->tipo_valuacion_a,
             'tipoEspecieB' => $this->tipo_especie_b,
             'codigoEspecieB' => $this->codigo_especie_b,
-            'cantEspeciesB' => $this->cant_especies_b,
+            'cantEspeciesB' => (float) $this->cant_especies_b,
             'codigoAfectacionB' => $this->codigo_afectacion_b,
             'tipoValuacionB' => $this->tipo_valuacion_b,
-            'fechaMovimiento' => $this->fecha_movimiento,
-            'fechaLiquidacion' => $this->fecha_liquidacion,
+            'fechaMovimiento' => $this->formatDateForSSN($this->fecha_movimiento),
+            'fechaLiquidacion' => $this->formatDateForSSN($this->fecha_liquidacion),
+            'fechaVTA' => $this->formatDateForSSN($this->fecha_vt_a),
+            'precioVTA' => $this->precio_vt_a ? (float) $this->precio_vt_a : 0,
+            'fechaVTB' => $this->formatDateForSSN($this->fecha_vt_b),
+            'precioVTB' => $this->precio_vt_b ? (float) $this->precio_vt_b : 0,
         ];
-
-        // Agregar campos específicos de VT si aplica
-        if ($this->fecha_vt_a) {
-            $canjeJson['fechaVTA'] = $this->fecha_vt_a;
-            $canjeJson['precioVTA'] = $this->precio_vt_a;
-        }
-
-        if ($this->fecha_vt_b) {
-            $canjeJson['fechaVTB'] = $this->fecha_vt_b;
-            $canjeJson['precioVTB'] = $this->precio_vt_b;
-        }
 
         return array_merge($json, $canjeJson);
     }
@@ -234,14 +353,14 @@ class WeeklyOperation extends Model
             'tipoPF' => $this->tipo_pf,
             'bic' => $this->bic,
             'cdf' => $this->cdf,
-            'fechaConstitucion' => $this->fecha_constitucion,
-            'fechaVencimiento' => $this->fecha_vencimiento,
+            'fechaConstitucion' => $this->formatDateForSSN($this->fecha_constitucion),
+            'fechaVencimiento' => $this->formatDateForSSN($this->fecha_vencimiento),
             'moneda' => $this->moneda,
-            'valorNominalOrigen' => $this->valor_nominal_origen,
-            'valorNominalNacional' => $this->valor_nominal_nacional,
+            'valorNominalOrigen' => $this->valor_nominal_origen ? (float) $this->valor_nominal_origen : 0,
+            'valorNominalNacional' => $this->valor_nominal_nacional ? (float) $this->valor_nominal_nacional : 0,
             'codigoAfectacion' => $this->codigo_afectacion,
             'tipoTasa' => $this->tipo_tasa,
-            'tasa' => $this->tasa,
+            'tasa' => $this->tasa ? (float) $this->tasa : 0,
             'tituloDeuda' => $this->titulo_deuda ? '1' : '0',
         ];
 
