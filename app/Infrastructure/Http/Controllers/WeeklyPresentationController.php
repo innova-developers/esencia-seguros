@@ -76,39 +76,39 @@ class WeeklyPresentationController extends Controller
     {
         $currentDate = Carbon::now();
         $oneMonthAgo = $currentDate->copy()->subMonth();
-        $twoWeeksAgo = $currentDate->copy()->subWeeks(2);
-        
+        $twoWeeksAgo = $currentDate->copy()->subWeeks(1);
+
         $availableWeeks = [];
-        
+
         // Generar semanas desde 1 mes atrás hasta la anteúltima semana
         $startDate = $oneMonthAgo->startOfWeek();
         $endDate = $twoWeeksAgo->endOfWeek();
-        
+
         $currentWeek = $startDate->copy();
-        
+
         while ($currentWeek <= $endDate) {
             $weekNumber = $currentWeek->format('W');
             $year = $currentWeek->format('Y');
             $weekStart = $currentWeek->format('d/m');
             $weekEnd = $currentWeek->copy()->endOfWeek()->format('d/m');
-            
+
             $weekKey = "{$year}-{$weekNumber}";
-            
+
             // Verificar si ya existe una presentación con estados bloqueantes
             $existingPresentation = Presentation::where('cronograma', $weekKey)
                 ->whereIn('estado', ['PRESENTADO', 'RECTIFICACION_PENDIENTE'])
                 ->first();
-            
+
             // Solo incluir si no existe presentación con estados bloqueantes
             if (!$existingPresentation) {
                 $displayText = "Semana {$weekNumber} ({$year}) - {$weekStart} al {$weekEnd}";
-                
+
                 // Marcar si ya existe una presentación en otros estados
                 if (Presentation::where('cronograma', $weekKey)->exists()) {
                     $existing = Presentation::where('cronograma', $weekKey)->first();
                     $displayText .= " (Estado actual: {$existing->estado})";
                 }
-                
+
                 $availableWeeks[] = [
                     'value' => $weekKey,
                     'text' => $displayText,
@@ -117,10 +117,10 @@ class WeeklyPresentationController extends Controller
                     'has_existing' => Presentation::where('cronograma', $weekKey)->exists()
                 ];
             }
-            
+
             $currentWeek->addWeek();
         }
-        
+
         return $availableWeeks;
     }
 
@@ -185,14 +185,14 @@ class WeeklyPresentationController extends Controller
             if (!file_exists($excelDirectory)) {
                 mkdir($excelDirectory, 0755, true);
             }
-            
+
             // Generar nombre único para el archivo Excel
             $excelFilename = 'presentation_' . $week . '_' . now()->format('Y-m-d_H-i-s') . '.' . $extension;
             $excelFilePath = $excelDirectory . '/' . $excelFilename;
-            
+
             // Guardar el archivo Excel
             $file->move($excelDirectory, $excelFilename);
-            
+
             // Usar el archivo guardado para procesamiento
             if (!file_exists($excelFilePath)) {
                 throw new \Exception("El archivo guardado no existe: {$excelFilePath}");
@@ -440,7 +440,7 @@ class WeeklyPresentationController extends Controller
                 // Si existe con estado A_RECTIFICAR, crear una nueva versión
                 if ($existingPresentation->estado === 'A_RECTIFICAR') {
                     $newVersion = \App\Domain\Models\Presentation::getNextVersion($codigoCompania, $week, 'Semanal');
-                    
+
                     $presentation = \App\Domain\Models\Presentation::create([
                         'user_id' => $user->id,
                         'codigo_compania' => $codigoCompania,
@@ -467,15 +467,15 @@ class WeeklyPresentationController extends Controller
                             'previous_status' => $existingPresentation->estado,
                         ]),
                     ]);
-                } 
+                }
                 // Si existe como borrador (CARGADO), actualizar la existente
                 elseif ($existingPresentation->estado === 'CARGADO') {
                     $presentation = $existingPresentation;
-                    
+
                     // Borrar operaciones anteriores
                     $presentation->weeklyOperations()->delete();
                     $presentation->codigo_compania = $codigoCompania;
-                    
+
                     // Actualizar información del archivo original si se proporciona
                     if ($originalFilename) {
                         $presentation->original_filename = $originalFilename;
@@ -483,7 +483,7 @@ class WeeklyPresentationController extends Controller
                     if ($originalFilePath) {
                         $presentation->original_file_path = $originalFilePath;
                     }
-                    
+
                     $presentation->save();
 
                     ActivityLog::create([
@@ -499,11 +499,11 @@ class WeeklyPresentationController extends Controller
                             'total_operations' => count($operations),
                         ]),
                     ]);
-                } 
+                }
                 // Si existe con otro estado bloqueante, no permitir
                 else {
                     return response()->json([
-                        'success' => false, 
+                        'success' => false,
                         'message' => "Ya existe una presentación para la semana {$week} en estado '{$existingPresentation->estado}' (v{$existingPresentation->version}). No se puede sobrescribir."
                     ], 400);
                 }
@@ -547,11 +547,11 @@ class WeeklyPresentationController extends Controller
                     'fecha_movimiento' => $this->formatDateForDatabase($op['fecha_movimiento']),
                     'fecha_liquidacion' => $this->formatDateForDatabase($op['fecha_liquidacion']),
                 ];
-                
+
                 // Agregar campos específicos según el tipo de operación
                 if ($op['tipo_operacion'] === 'C') {
                     $operationData['precio_compra'] = $op['precio_compra'] ?? null;
-                    
+
                     // Log para debuggear
                     \Log::info('Guardando operación de compra', [
                         'tipo_operacion' => $op['tipo_operacion'],
@@ -559,13 +559,13 @@ class WeeklyPresentationController extends Controller
                         'precio_compra_final' => $operationData['precio_compra'],
                         'operation_data' => $operationData
                     ]);
-                    
+
                 } elseif ($op['tipo_operacion'] === 'V') {
                     $operationData['precio_venta'] = $op['precio_venta'] ?? null;
                     $operationData['fecha_pase_vt'] = $this->formatDateForDatabase($op['fecha_pase_vt'] ?? null);
                     $operationData['precio_pase_vt'] = $op['precio_pase_vt'] ?? null;
                 }
-                
+
                 $presentation->weeklyOperations()->create($operationData);
             }
 
@@ -601,7 +601,7 @@ class WeeklyPresentationController extends Controller
     public function confirm($id)
     {
         $presentation = \App\Domain\Models\Presentation::with('weeklyOperations')->findOrFail($id);
-        
+
         if ($presentation->estado !== 'CARGADO') {
             ActivityLog::create([
                 'user_id' => auth()->id(),
@@ -615,7 +615,7 @@ class WeeklyPresentationController extends Controller
                     'required_status' => 'CARGADO',
                 ]),
             ]);
-            
+
             return back()->with('error', 'Solo se puede confirmar una presentación en estado CARGADO.');
         }
 
@@ -637,24 +637,24 @@ class WeeklyPresentationController extends Controller
             // Generar el JSON que se enviará a SSN usando el servicio con la lógica correcta
             $operations = $presentation->weeklyOperations->toArray();
             $ssnJson = $this->excelProcessor->generateSsnJson($operations, $presentation->cronograma);
-            
+
             // Crear directorio para archivos JSON si no existe
             $jsonDirectory = storage_path('app/presentations/json');
             if (!file_exists($jsonDirectory)) {
                 mkdir($jsonDirectory, 0755, true);
             }
-            
+
             // Generar nombre único para el archivo JSON
             $jsonFilename = 'presentation_' . $presentation->id . '_' . $presentation->cronograma . '_' . now()->format('Y-m-d_H-i-s') . '.json';
             $jsonFilePath = $jsonDirectory . '/' . $jsonFilename;
-            
+
             // Guardar el JSON en archivo
             file_put_contents($jsonFilePath, json_encode($ssnJson, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-            
+
             // Enviar a SSN (simulado o real)
             $ssnService = app(\App\Services\SSNService::class);
             $response = $ssnService->sendWeeklyPresentation($presentation);
-            
+
             // Verificar si la respuesta fue exitosa
             if (!$response['success']) {
                 throw new \Exception('Error en la respuesta de SSN: ' . ($response['error'] ?? 'Respuesta no exitosa'));
@@ -666,10 +666,10 @@ class WeeklyPresentationController extends Controller
             $presentation->ssn_response_data = $response['data'] ?? $response;
             $presentation->presented_at = now();
             $presentation->confirmed_at = now();
-            
+
             // Guardar información del archivo JSON generado
             $presentation->json_file_path = 'presentations/json/' . $jsonFilename;
-            
+
             $presentation->save();
 
             // Log de confirmación exitosa
@@ -718,7 +718,7 @@ class WeeklyPresentationController extends Controller
     public function rectify($id)
     {
         $presentation = \App\Domain\Models\Presentation::findOrFail($id);
-        
+
         if ($presentation->estado !== 'PRESENTADO') {
             ActivityLog::create([
                 'user_id' => auth()->id(),
@@ -732,7 +732,7 @@ class WeeklyPresentationController extends Controller
                     'required_status' => 'PRESENTADO',
                 ]),
             ]);
-            
+
             return back()->with('error', 'Solo se puede solicitar rectificación si el estado es PRESENTADO.');
         }
 
@@ -754,7 +754,7 @@ class WeeklyPresentationController extends Controller
             // Llamar a la API de la SSN para solicitar rectificación
             $ssnService = app(\App\Services\SSNService::class);
             $response = $ssnService->requestRectification($presentation);
-            
+
             // Verificar si la respuesta fue exitosa
             if (!$response['success']) {
                 throw new \Exception('Error en la respuesta de SSN: ' . ($response['error'] ?? 'Respuesta no exitosa'));
@@ -763,12 +763,12 @@ class WeeklyPresentationController extends Controller
             // Actualizar la presentación
             $presentation->estado = 'RECTIFICACION_PENDIENTE';
             $presentation->rectification_requested_at = now();
-            
+
             // Guardar la respuesta de rectificación en los datos de SSN
             $ssnData = $presentation->ssn_response_data ?? [];
             $ssnData['rectification_request'] = $response['data'] ?? $response;
             $presentation->ssn_response_data = $ssnData;
-            
+
             $presentation->save();
 
             // Log de rectificación exitosa
@@ -816,13 +816,13 @@ class WeeklyPresentationController extends Controller
     public function downloadJson($id)
     {
         $presentation = \App\Domain\Models\Presentation::findOrFail($id);
-        
+
         if (!$presentation->json_file_path) {
             return back()->with('error', 'No hay archivo JSON disponible para esta presentación.');
         }
 
         $filePath = storage_path('app/' . $presentation->json_file_path);
-        
+
         if (!file_exists($filePath)) {
             return back()->with('error', 'El archivo JSON no se encuentra en el servidor.');
         }
@@ -843,7 +843,7 @@ class WeeklyPresentationController extends Controller
         ]);
 
         $filename = 'presentacion_' . $presentation->cronograma . '_' . $presentation->tipo_entrega . '.json';
-        
+
         return response()->download($filePath, $filename, [
             'Content-Type' => 'application/json',
             'Content-Disposition' => 'attachment; filename="' . $filename . '"',
@@ -856,13 +856,13 @@ class WeeklyPresentationController extends Controller
     public function downloadExcel($id)
     {
         $presentation = \App\Domain\Models\Presentation::findOrFail($id);
-        
+
         if (!$presentation->original_file_path) {
             return back()->with('error', 'No hay archivo Excel original disponible para esta presentación.');
         }
 
         $filePath = storage_path('app/' . $presentation->original_file_path);
-        
+
         if (!file_exists($filePath)) {
             return back()->with('error', 'El archivo Excel original no se encuentra en el servidor.');
         }
@@ -885,7 +885,7 @@ class WeeklyPresentationController extends Controller
 
         // Usar el nombre original del archivo si está disponible
         $filename = $presentation->original_filename ?: 'presentacion_' . $presentation->cronograma . '_original.xlsx';
-        
+
         return response()->download($filePath, $filename, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => 'attachment; filename="' . $filename . '"',
@@ -900,13 +900,13 @@ class WeeklyPresentationController extends Controller
         if (empty($dateString)) {
             return null;
         }
-        
+
         try {
             // Si ya está en formato DDMMYYYY, devolverlo tal como está
             if (preg_match('/^\d{8}$/', $dateString)) {
                 return $dateString;
             }
-            
+
             // Si está en formato YYYY-MM-DD, convertirlo a DDMMYYYY
             if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateString)) {
                 $date = \DateTime::createFromFormat('Y-m-d', $dateString);
@@ -914,7 +914,7 @@ class WeeklyPresentationController extends Controller
                     return $date->format('dmY');
                 }
             }
-            
+
             // Si está en formato DD/MM/YYYY, convertirlo a DDMMYYYY
             if (preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $dateString)) {
                 $date = \DateTime::createFromFormat('d/m/Y', $dateString);
@@ -922,12 +922,12 @@ class WeeklyPresentationController extends Controller
                     return $date->format('dmY');
                 }
             }
-            
+
             \Log::warning('Formato de fecha no reconocido para conversión a DDMMYYYY', [
                 'date_string' => $dateString
             ]);
             return null;
-            
+
         } catch (\Exception $e) {
             \Log::error('Error al formatear fecha para la base de datos', [
                 'date_string' => $dateString,
@@ -936,4 +936,4 @@ class WeeklyPresentationController extends Controller
             return null;
         }
     }
-} 
+}
