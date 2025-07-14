@@ -87,7 +87,7 @@ class WeeklyPresentationController extends Controller
         $currentWeek = $startDate->copy();
 
         while ($currentWeek <= $endDate) {
-            $weekNumber = $currentWeek->format('W');
+            $weekNumber = $currentWeek->format('W') -1 ; // Ajustar para que la semana 1 sea la primera del mes
             $year = $currentWeek->format('Y');
             $weekStart = $currentWeek->format('d/m');
             $weekEnd = $currentWeek->copy()->endOfWeek()->format('d/m');
