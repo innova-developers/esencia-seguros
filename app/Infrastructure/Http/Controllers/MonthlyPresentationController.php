@@ -84,26 +84,26 @@ class MonthlyPresentationController extends Controller
         $currentDate = Carbon::now();
         $oneMonthAgo = $currentDate->copy()->subMonth();
         $twoMonthsAgo = $currentDate->copy()->subMonths(2);
-        
+
         $availableMonths = [];
-        
+
         // Generar meses desde 1 mes atrás hasta el anteúltimo mes
         $startDate = $oneMonthAgo->startOfMonth();
         $endDate = $twoMonthsAgo->endOfMonth();
-        
+
         $currentMonth = $startDate->copy();
-        
+
         while ($currentMonth >= $endDate) {
             $monthKey = $currentMonth->format('Y-m');
             // Mostrar el mes en español
             $displayText = $currentMonth->locale('es')->translatedFormat('F Y');
-            
+
             // Verificar si ya existe una presentación con estados bloqueantes
             $existingPresentation = Presentation::where('cronograma', $monthKey)
                 ->where('tipo_entrega', 'Mensual')
                 ->whereIn('estado', ['PRESENTADO', 'RECTIFICACION_PENDIENTE'])
                 ->first();
-            
+
             // Solo incluir si no existe presentación con estados bloqueantes
             if (!$existingPresentation) {
                 // Marcar si ya existe una presentación en otros estados
@@ -111,17 +111,17 @@ class MonthlyPresentationController extends Controller
                     $existing = Presentation::where('cronograma', $monthKey)->where('tipo_entrega', 'Mensual')->first();
                     $displayText .= " (Estado actual: {$existing->estado})";
                 }
-                
+
                 $availableMonths[] = [
                     'value' => $monthKey,
                     'text' => $displayText,
                     'has_existing' => Presentation::where('cronograma', $monthKey)->where('tipo_entrega', 'Mensual')->exists()
                 ];
             }
-            
+
             $currentMonth->subMonth();
         }
-        
+
         return $availableMonths;
     }
 
@@ -187,14 +187,14 @@ class MonthlyPresentationController extends Controller
             if (!file_exists($excelDirectory)) {
                 mkdir($excelDirectory, 0755, true);
             }
-            
+
             // Generar nombre único para el archivo Excel
             $excelFilename = 'presentation_' . $month . '_' . now()->format('Y-m-d_H-i-s') . '.' . $extension;
             $excelFilePath = $excelDirectory . '/' . $excelFilename;
-            
+
             // Guardar el archivo Excel
             $file->move($excelDirectory, $excelFilename);
-            
+
             // Usar el archivo guardado para procesamiento
             if (!file_exists($excelFilePath)) {
                 throw new \Exception("El archivo guardado no existe: {$excelFilePath}");
@@ -265,7 +265,7 @@ class MonthlyPresentationController extends Controller
 
             // Generar el JSON completo usando el servicio
             $codigoCompania = env('SSN_CIA', '1');
-            
+
             $ssnJson = [
                 'codigoCompania' => $codigoCompania,
                 'cronograma' => $month,
@@ -295,7 +295,7 @@ class MonthlyPresentationController extends Controller
                     'financiera' => $stock['financiera'],
                     'valorFinanciero' => $stock['valor_financiero'],
                 ];
-                
+
                 $ssnJson['stocks'][] = $ssnStock;
             }
 
@@ -516,15 +516,15 @@ class MonthlyPresentationController extends Controller
                             'previous_status' => $existingPresentation->estado,
                         ]),
                     ]);
-                } 
+                }
                 // Si existe como borrador (CARGADO), actualizar la existente
                 elseif ($existingPresentation->estado === 'CARGADO') {
                     $presentation = $existingPresentation;
-                    
+
                     // Borrar stocks anteriores
                     $presentation->monthlyStocks()->delete();
                     $presentation->codigo_compania = $codigoCompania;
-                    
+
                     // Actualizar información del archivo original si se proporciona
                     if ($originalFilename) {
                         $presentation->original_filename = $originalFilename;
@@ -532,7 +532,7 @@ class MonthlyPresentationController extends Controller
                     if ($originalFilePath) {
                         $presentation->original_file_path = $originalFilePath;
                     }
-                    
+
                     $presentation->save();
 
                     ActivityLog::create([
@@ -547,11 +547,11 @@ class MonthlyPresentationController extends Controller
                             'total_stocks' => count($stocks),
                         ]),
                     ]);
-                } 
+                }
                 // Si existe con otro estado bloqueante, no permitir
                 else {
                     return response()->json([
-                        'success' => false, 
+                        'success' => false,
                         'message' => "Ya existe una presentación para el mes {$month} en estado '{$existingPresentation->estado}'. No se puede sobrescribir."
                     ], 400);
                 }
@@ -618,7 +618,7 @@ class MonthlyPresentationController extends Controller
     public function confirm($id)
     {
         $presentation = \App\Domain\Models\Presentation::with(['monthlyStocks', 'user'])->findOrFail($id);
-        
+
         if ($presentation->tipo_entrega !== 'Mensual') {
             return redirect()->route('dashboard')->with('error', 'La presentación no es mensual.');
         }
@@ -630,28 +630,30 @@ class MonthlyPresentationController extends Controller
         try {
             // Generar el JSON que se enviará a SSN
             $ssnJson = $presentation->getSsnJson();
-            
+
             // Crear directorio para archivos JSON si no existe
             $jsonDirectory = storage_path('app/presentations/json');
             if (!file_exists($jsonDirectory)) {
                 mkdir($jsonDirectory, 0755, true);
             }
-            
+
             // Generar nombre único para el archivo JSON
             $jsonFilename = 'presentation_' . $presentation->id . '_' . $presentation->cronograma . '_' . now()->format('Y-m-d_H-i-s') . '.json';
             $jsonFilePath = $jsonDirectory . '/' . $jsonFilename;
-            
+
             // Guardar el JSON en archivo
             file_put_contents($jsonFilePath, json_encode($ssnJson, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-            
+
             // Enviar a SSN (simulado o real)
             $ssnService = app(\App\Services\SSNService::class);
             $response = $ssnService->sendMonthlyPresentation($presentation);
-            
+
             // Verificar si la respuesta fue exitosa
             if (!$response['success']) {
                 throw new \Exception('Error en la respuesta de SSN: ' . ($response['error'] ?? 'Respuesta no exitosa'));
             }
+
+            $response = $ssnService->confirmMonthlyPresentation($presentation);
 
             // Actualizar la presentación con los datos de respuesta
             $presentation->estado = 'PRESENTADO';
@@ -659,10 +661,10 @@ class MonthlyPresentationController extends Controller
             $presentation->ssn_response_data = $response['data'] ?? $response;
             $presentation->presented_at = now();
             $presentation->confirmed_at = now();
-            
+
             // Guardar información del archivo JSON generado
             $presentation->json_file_path = 'presentations/json/' . $jsonFilename;
-            
+
             $presentation->save();
 
             // Log de confirmación exitosa
@@ -707,7 +709,7 @@ class MonthlyPresentationController extends Controller
     public function rectify($id)
     {
         $presentation = \App\Domain\Models\Presentation::with(['monthlyStocks', 'user'])->findOrFail($id);
-        
+
         if ($presentation->tipo_entrega !== 'Mensual') {
             return redirect()->route('dashboard')->with('error', 'La presentación no es mensual.');
         }
@@ -719,11 +721,11 @@ class MonthlyPresentationController extends Controller
         try {
             // Generar el JSON para la rectificación
             $ssnJson = $presentation->getSsnJson();
-            
+
             // Enviar solicitud de rectificación a SSN
             $ssnService = app(\App\Services\SSNService::class);
             $response = $ssnService->requestRectification($presentation);
-            
+
             // Verificar si la respuesta fue exitosa
             if (!$response['success']) {
                 throw new \Exception('Error en la respuesta de SSN: ' . ($response['error'] ?? 'Respuesta no exitosa'));
@@ -781,13 +783,13 @@ class MonthlyPresentationController extends Controller
     public function downloadJson($id)
     {
         $presentation = \App\Domain\Models\Presentation::findOrFail($id);
-        
+
         if (!$presentation->json_file_path) {
             return back()->with('error', 'No hay archivo JSON disponible para esta presentación.');
         }
 
         $filePath = storage_path('app/' . $presentation->json_file_path);
-        
+
         if (!file_exists($filePath)) {
             return back()->with('error', 'El archivo JSON no se encuentra en el servidor.');
         }
@@ -808,7 +810,7 @@ class MonthlyPresentationController extends Controller
         ]);
 
         $filename = 'presentacion_' . $presentation->cronograma . '_' . $presentation->tipo_entrega . '.json';
-        
+
         return response()->download($filePath, $filename, [
             'Content-Type' => 'application/json',
             'Content-Disposition' => 'attachment; filename="' . $filename . '"',
@@ -821,13 +823,13 @@ class MonthlyPresentationController extends Controller
     public function downloadExcel($id)
     {
         $presentation = \App\Domain\Models\Presentation::findOrFail($id);
-        
+
         if (!$presentation->original_file_path) {
             return back()->with('error', 'No hay archivo Excel disponible para esta presentación.');
         }
 
         $filePath = storage_path('app/' . $presentation->original_file_path);
-        
+
         if (!file_exists($filePath)) {
             return back()->with('error', 'El archivo Excel no se encuentra en el servidor.');
         }
@@ -848,7 +850,7 @@ class MonthlyPresentationController extends Controller
         ]);
 
         $filename = 'presentacion_' . $presentation->cronograma . '_' . $presentation->tipo_entrega . '.' . pathinfo($presentation->original_filename, PATHINFO_EXTENSION);
-        
+
         return response()->download($filePath, $filename, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => 'attachment; filename="' . $filename . '"',
@@ -861,7 +863,7 @@ class MonthlyPresentationController extends Controller
     public function sendSsn($id)
     {
         $presentation = \App\Domain\Models\Presentation::with(['monthlyStocks', 'user'])->findOrFail($id);
-        
+
         if ($presentation->tipo_entrega !== 'Mensual') {
             return redirect()->route('dashboard')->with('error', 'La presentación no es mensual.');
         }
@@ -873,11 +875,11 @@ class MonthlyPresentationController extends Controller
         try {
             // Generar el JSON para SSN
             $ssnJson = $presentation->getSsnJson();
-            
+
             // Enviar a SSN
             $ssnService = app(\App\Services\SSNService::class);
             $response = $ssnService->sendMonthlyPresentation($presentation);
-            
+
             // Verificar si la respuesta fue exitosa
             if (!$response['success']) {
                 throw new \Exception('Error en la respuesta de SSN: ' . ($response['error'] ?? 'Respuesta no exitosa'));
@@ -928,4 +930,4 @@ class MonthlyPresentationController extends Controller
             return back()->with('error', 'Error al enviar a SSN: ' . $e->getMessage());
         }
     }
-} 
+}

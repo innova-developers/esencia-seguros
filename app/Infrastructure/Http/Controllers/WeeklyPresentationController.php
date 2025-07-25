@@ -653,12 +653,16 @@ class WeeklyPresentationController extends Controller
 
             // Enviar a SSN (simulado o real)
             $ssnService = app(\App\Services\SSNService::class);
+
             $response = $ssnService->sendWeeklyPresentation($presentation);
 
             // Verificar si la respuesta fue exitosa
             if (!$response['success']) {
                 throw new \Exception('Error en la respuesta de SSN: ' . ($response['error'] ?? 'Respuesta no exitosa'));
             }
+
+            $ssnService->confirmWeeklyPresentation($presentation);
+
 
             // Actualizar la presentación con los datos de respuesta
             $presentation->estado = 'PRESENTADO';
