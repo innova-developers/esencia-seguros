@@ -577,6 +577,32 @@ class ExcelProcessorService
     }
     
     /**
+     * Convertir boolean a formato SSN (1/0)
+     */
+    private function convertToSSNBoolean($value): int
+    {
+        if (is_bool($value)) {
+            return $value ? 1 : 0;
+        }
+        
+        if (is_numeric($value)) {
+            return (int) $value;
+        }
+        
+        if (is_string($value)) {
+            $lowerValue = strtolower(trim($value));
+            if (in_array($lowerValue, ['true', '1', 'yes', 'si', 'sí'])) {
+                return 1;
+            }
+            if (in_array($lowerValue, ['false', '0', 'no'])) {
+                return 0;
+            }
+        }
+        
+        return 0; // Default
+    }
+
+    /**
      * Formatear fecha para SSN (DDMMYYYY)
      */
     public function formatDateForSSN(?string $date): string
@@ -619,6 +645,11 @@ class ExcelProcessorService
                     continue;
                 }
                 
+                // Verificar si debe incluir campos de Pase VT
+                $tipoEspecie = strtoupper(trim($stock['tipo_especie'] ?? ''));
+                $tipoValuacion = strtoupper(trim($stock['tipo_valuacion'] ?? ''));
+                $debeIncluirPaseVT = in_array($tipoEspecie, ['TP', 'ON']) && $tipoValuacion === 'T';
+
                 $ssnStock = [
                     'tipo' => $stock['tipo'],
                     'tipoEspecie' => $stock['tipo_especie'],
@@ -627,18 +658,39 @@ class ExcelProcessorService
                     'cantidadPercibidoEspecies' => (float) ($stock['cantidad_percibido_especies'] ?? 0),
                     'codigoAfectacion' => $stock['codigo_afectacion'] ?? '',
                     'tipoValuacion' => $stock['tipo_valuacion'] ?? '',
-                    'conCotizacion' => $stock['con_cotizacion'] ?? false,
-                    'libreDisponibilidad' => $stock['libre_disponibilidad'] ?? false,
-                    'emisorGrupoEconomico' => $stock['emisor_grupo_economico'] ?? false,
-                    'emisorArtRet' => $stock['emisor_art_ret'] ?? false,
+                    'conCotizacion' => $this->convertToSSNBoolean($stock['con_cotizacion'] ?? false),
+                    'libreDisponibilidad' => $this->convertToSSNBoolean($stock['libre_disponibilidad'] ?? false),
+                    'emisorGrupoEconomico' => $this->convertToSSNBoolean($stock['emisor_grupo_economico'] ?? false),
+                    'emisorArtRet' => $this->convertToSSNBoolean($stock['emisor_art_ret'] ?? false),
                     'previsionDesvalorizacion' => $stock['prevision_desvalorizacion'] !== null && $stock['prevision_desvalorizacion'] !== '' ? (float) $stock['prevision_desvalorizacion'] : 0,
                     'valorContable' => $stock['valor_contable'] !== null && $stock['valor_contable'] !== '' ? (float) $stock['valor_contable'] : 0,
-                    'fechaPaseVt' => $this->formatDateForSSN($stock['fecha_pase_vt'] ?? ''),
-                    'precioPaseVt' => $stock['precio_pase_vt'] !== null && $stock['precio_pase_vt'] !== '' ? (float) $stock['precio_pase_vt'] : 0,
-                    'enCustodia' => $stock['en_custodia'] ?? false,
-                    'financiera' => $stock['financiera'] ?? false,
+                    'enCustodia' => $this->convertToSSNBoolean($stock['en_custodia'] ?? false),
+                    'financiera' => $this->convertToSSNBoolean($stock['financiera'] ?? false),
                     'valorFinanciero' => $stock['valor_financiero'] !== null && $stock['valor_financiero'] !== '' ? (float) $stock['valor_financiero'] : 0,
                 ];
+
+                // Agregar campos de Pase VT solo si corresponde
+                if ($debeIncluirPaseVT) {
+                    $ssnStock['fechaPaseVt'] = $this->formatDateForSSN($stock['fecha_pase_vt'] ?? '');
+                    $ssnStock['precioPaseVt'] = $stock['precio_pase_vt'] !== null && $stock['precio_pase_vt'] !== '' ? (float) $stock['precio_pase_vt'] : 0;
+                } else {
+                    $ssnStock['fechaPaseVt'] = '';
+                    $ssnStock['precioPaseVt'] = '';
+                }
+                
+                // Log para debugging
+                \Log::info('Stock procesado para SSN', [
+                    'stock_index' => $index,
+                    'tipo_especie' => $tipoEspecie,
+                    'tipo_valuacion' => $tipoValuacion,
+                    'debe_incluir_pase_vt' => $debeIncluirPaseVT,
+                    'con_cotizacion' => $ssnStock['conCotizacion'],
+                    'libre_disponibilidad' => $ssnStock['libreDisponibilidad'],
+                    'emisor_grupo_economico' => $ssnStock['emisorGrupoEconomico'],
+                    'emisor_art_ret' => $ssnStock['emisorArtRet'],
+                    'en_custodia' => $ssnStock['enCustodia'],
+                    'financiera' => $ssnStock['financiera'],
+                ]);
                 
                 $ssnStocks[] = $ssnStock;
                 
