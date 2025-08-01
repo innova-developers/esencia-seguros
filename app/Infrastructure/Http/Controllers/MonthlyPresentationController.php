@@ -697,7 +697,7 @@ class MonthlyPresentationController extends Controller
                 'metadata' => json_encode([
                     'presentation_id' => $id,
                     'month' => $presentation->cronograma,
-                    'error' => $e->getMessage(),
+                    'details' => $e->getMessage(),
                     'trace' => $e->getTraceAsString(),
                 ]),
             ]);
