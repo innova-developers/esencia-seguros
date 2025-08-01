@@ -628,8 +628,25 @@ class MonthlyPresentationController extends Controller
         }
 
         try {
+            // Log del inicio del proceso
+            \Log::info('Iniciando confirmación de presentación mensual', [
+                'presentation_id' => $id,
+                'cronograma' => $presentation->cronograma,
+                'total_stocks' => $presentation->monthlyStocks->count(),
+                'user_id' => auth()->id(),
+            ]);
+
             // Generar el JSON que se enviará a SSN
             $ssnJson = $presentation->getSsnJson();
+            
+            // Log del JSON generado
+            \Log::info('JSON generado para SSN', [
+                'presentation_id' => $id,
+                'json_size' => strlen(json_encode($ssnJson)),
+                'tipoEntrega' => $ssnJson['tipoEntrega'] ?? 'NO_DEFINIDO',
+                'codigoCompania' => $ssnJson['codigoCompania'] ?? 'NO_DEFINIDO',
+                'total_stocks' => count($ssnJson['stocks'] ?? []),
+            ]);
 
             // Crear directorio para archivos JSON si no existe
             $jsonDirectory = storage_path('app/presentations/json');
@@ -644,27 +661,86 @@ class MonthlyPresentationController extends Controller
             // Guardar el JSON en archivo
             file_put_contents($jsonFilePath, json_encode($ssnJson, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 
-            // Enviar a SSN (simulado o real)
-            $ssnService = app(\App\Services\SSNService::class);
-            $response = $ssnService->sendMonthlyPresentation($presentation);
+            // Log antes de enviar a SSN
+            \Log::info('Enviando presentación a SSN', [
+                'presentation_id' => $id,
+                'json_file_path' => $jsonFilePath,
+                'ssn_service_class' => get_class(app(\App\Services\SSNService::class)),
+            ]);
 
-            // Verificar si la respuesta fue exitosa
-            if (!$response['success']) {
-                throw new \Exception('Error en la respuesta de SSN: ' . ($response['error'] ?? 'Respuesta no exitosa'));
+            // Enviar presentación a SSN
+            $ssnService = app(\App\Services\SSNService::class);
+            $sendResponse = $ssnService->sendMonthlyPresentation($presentation);
+
+            // Log de la respuesta del envío
+            \Log::info('Respuesta de envío recibida de SSN', [
+                'presentation_id' => $id,
+                'success' => $sendResponse['success'] ?? false,
+                'status_code' => $sendResponse['status'] ?? 'NO_STATUS',
+                'error' => $sendResponse['error'] ?? null,
+                'data' => $sendResponse['data'] ?? null,
+                'full_response' => $sendResponse,
+            ]);
+
+            // Verificar si el envío fue exitoso
+            if (!$sendResponse['success']) {
+                $errorMessage = 'Error en el envío a SSN: ' . ($sendResponse['error'] ?? 'Respuesta no exitosa');
+                
+                // Log detallado del error
+                \Log::error('Error en envío a SSN', [
+                    'presentation_id' => $id,
+                    'error_message' => $errorMessage,
+                    'full_response' => $sendResponse,
+                    'json_sent' => $ssnJson,
+                ]);
+                
+                throw new \Exception($errorMessage);
             }
 
+            // Log antes de confirmar en SSN
+            \Log::info('Confirmando presentación en SSN', [
+                'presentation_id' => $id,
+            ]);
+
+            // Confirmar presentación en SSN
             $response = $ssnService->confirmMonthlyPresentation($presentation);
+
+            // Log de la respuesta de confirmación de SSN
+            \Log::info('Respuesta de confirmación recibida de SSN', [
+                'presentation_id' => $id,
+                'success' => $response['success'] ?? false,
+                'status_code' => $response['status'] ?? 'NO_STATUS',
+                'error' => $response['error'] ?? null,
+                'data' => $response['data'] ?? null,
+                'full_response' => $response,
+            ]);
+
+            // Verificar si la confirmación fue exitosa
+            if (!$response['success']) {
+                $errorMessage = 'Error en la confirmación de SSN: ' . ($response['error'] ?? 'Respuesta no exitosa');
+                
+                // Log detallado del error
+                \Log::error('Error en confirmación de SSN', [
+                    'presentation_id' => $id,
+                    'error_message' => $errorMessage,
+                    'full_response' => $response,
+                    'send_response' => $sendResponse,
+                    'json_sent' => $ssnJson,
+                ]);
+                
+                throw new \Exception($errorMessage);
+            }
 
             // Actualizar la presentación con los datos de respuesta
             $presentation->estado = 'PRESENTADO';
-            $presentation->ssn_response_id = $response['data']['id'] ?? null;
-            $presentation->ssn_response_data = $response['data'] ?? $response;
+            $presentation->ssn_response_id = $sendResponse['data']['id'] ?? null;
+            $presentation->ssn_response_data = [
+                'send_response' => $sendResponse,
+                'confirm_response' => $response,
+            ];
             $presentation->presented_at = now();
             $presentation->confirmed_at = now();
-
-            // Guardar información del archivo JSON generado
             $presentation->json_file_path = 'presentations/json/' . $jsonFilename;
-
             $presentation->save();
 
             // Log de confirmación exitosa
@@ -681,17 +757,34 @@ class MonthlyPresentationController extends Controller
                     'ssn_status' => $response['data']['status'] ?? 'unknown',
                     'total_stocks' => $presentation->monthlyStocks->count(),
                     'json_file_path' => $presentation->json_file_path,
+                    'full_ssn_response' => $response,
                 ]),
             ]);
 
-            return redirect()->route('monthly-presentations.show', $presentation->id)->with('success', 'Presentación enviada a SSN correctamente.');
+            // Guardar la respuesta completa de SSN en la sesión para mostrarla al usuario
+            session()->flash('ssn_response', $response);
+
+            return redirect()->route('monthly-presentations.show', $presentation->id)
+                ->with('success', 'Presentación enviada y confirmada en SSN correctamente.');
 
         } catch (\Exception $e) {
-            // Log del error
+            // Log detallado del error
+            \Log::error('Error en confirmación de presentación mensual', [
+                'presentation_id' => $id,
+                'error_message' => $e->getMessage(),
+                'error_trace' => $e->getTraceAsString(),
+                'presentation_data' => [
+                    'cronograma' => $presentation->cronograma ?? 'NO_DEFINIDO',
+                    'estado' => $presentation->estado ?? 'NO_DEFINIDO',
+                    'total_stocks' => $presentation->monthlyStocks->count(),
+                ],
+            ]);
+
+            // Log del error en ActivityLog
             ActivityLog::create([
                 'user_id' => auth()->id(),
                 'action' => 'CONFIRMATION_ERROR',
-                'description' => "Error al confirmar presentación mensual {$id}",
+                'description' => "Error al confirmar presentación mensual {$id}: " . $e->getMessage(),
                 'ip_address' => request()->ip(),
                 'user_agent' => request()->userAgent(),
                 'metadata' => json_encode([
@@ -699,10 +792,11 @@ class MonthlyPresentationController extends Controller
                     'month' => $presentation->cronograma,
                     'details' => $e->getMessage(),
                     'trace' => $e->getTraceAsString(),
+                    'error_type' => get_class($e),
                 ]),
             ]);
 
-            return back()->with('error', 'Error al enviar a SSN: ' . $e->getMessage());
+            return back()->with('error', 'Error al enviar/confirmar en SSN: ' . $e->getMessage());
         }
     }
 

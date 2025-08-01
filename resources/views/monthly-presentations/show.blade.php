@@ -17,6 +17,12 @@
             <div class="card-body">
                 @if(session('success'))
                     <div class="alert alert-success">{{ session('success') }}</div>
+                    @if(session('ssn_response'))
+                        <div class="alert alert-info mt-2">
+                            <strong>Respuesta de la SSN:</strong>
+                            <pre style="background:#f8f9fa; border-radius:4px; padding:10px;">{{ json_encode(session('ssn_response'), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) }}</pre>
+                        </div>
+                    @endif
                 @endif
                 @if(session('error'))
                     <div class="alert alert-danger">{{ session('error') }}</div>

@@ -95,11 +95,33 @@ class SSNService
             $endpoint = '/inv/entregaMensual';
             $data = $presentation->getSsnJson();
 
-            return $this->makeRequest('POST', $endpoint, $data);
+            // Log del JSON que se va a enviar
+            Log::info('Enviando presentación mensual a SSN', [
+                'presentation_id' => $presentation->id,
+                'endpoint' => $endpoint,
+                'json_size' => strlen(json_encode($data)),
+                'tipoEntrega' => $data['tipoEntrega'] ?? 'NO_DEFINIDO',
+                'codigoCompania' => $data['codigoCompania'] ?? 'NO_DEFINIDO',
+                'total_stocks' => count($data['stocks'] ?? []),
+                'full_json' => $data,
+            ]);
+
+            $response = $this->makeRequest('POST', $endpoint, $data);
+
+            // Log de la respuesta
+            Log::info('Respuesta de SSN para presentación mensual', [
+                'presentation_id' => $presentation->id,
+                'success' => $response['success'] ?? false,
+                'status_code' => $response['status'] ?? 'NO_STATUS',
+                'response_data' => $response,
+            ]);
+
+            return $response;
         } catch (Exception $e) {
             Log::error('Error enviando presentación mensual a SSN', [
                 'presentation_id' => $presentation->id,
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
             throw $e;
         }
