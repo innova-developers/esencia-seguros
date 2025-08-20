@@ -405,6 +405,35 @@ class SSNService
     }
 
     /**
+     * Verificar estado de una presentación en SSN
+     */
+    public function checkPresentationStatus(string $cronograma, array $params = []): array
+    {
+        try {
+            // Determinar el endpoint basado en el tipo de entrega
+            $tipoEntrega = $params['tipoEntrega'] ?? 'Mensual';
+            $endpoint = $tipoEntrega === 'Semanal' ? '/inv/entregaSemanal' : '/inv/entregaMensual';
+            
+            // Log de la consulta
+            Log::info('Consultando estado de presentación en SSN', [
+                'cronograma' => $cronograma,
+                'params' => $params,
+                'endpoint' => $endpoint,
+                'tipo_entrega' => $tipoEntrega
+            ]);
+
+            return $this->makeRequest('GET', $endpoint, [], $params);
+        } catch (Exception $e) {
+            Log::error('Error consultando estado de presentación en SSN', [
+                'cronograma' => $cronograma,
+                'params' => $params,
+                'error' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
      * Verifica si el servicio está disponible
      */
     public function isAvailable(): bool

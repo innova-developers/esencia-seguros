@@ -25,6 +25,9 @@ class Presentation extends Model
         'confirmed_at',
         'rectification_requested_at',
         'rectification_approved_at',
+        'last_rectification_check_at',
+        'last_ssn_status',
+        'rectification_check_attempts',
         'original_file_path',
         'json_file_path',
         'original_filename',
@@ -39,6 +42,7 @@ class Presentation extends Model
         'confirmed_at' => 'datetime',
         'rectification_requested_at' => 'datetime',
         'rectification_approved_at' => 'datetime',
+        'last_rectification_check_at' => 'datetime',
     ];
 
     // Estados disponibles
