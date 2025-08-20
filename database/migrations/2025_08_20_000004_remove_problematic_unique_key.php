@@ -12,23 +12,18 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // 1. Agregar campo version si no existe
+        // Eliminar TODAS las claves únicas existentes (excepto PRIMARY)
+        $this->dropAllUniqueKeys();
+        
+        // Agregar campo version si no existe
         if (!Schema::hasColumn('presentations', 'version')) {
             Schema::table('presentations', function (Blueprint $table) {
                 $table->unsignedInteger('version')->default(1)->after('tipo_entrega');
             });
         }
-
-        // 2. Asignar versiones a presentaciones existentes
+        
+        // Asignar versiones a presentaciones existentes
         $this->assignVersionsToExistingPresentations();
-
-        // 3. Eliminar TODAS las claves únicas existentes (excepto PRIMARY)
-        $this->dropAllUniqueKeys();
-
-        // 4. Crear la nueva clave única con versión
-        Schema::table('presentations', function (Blueprint $table) {
-            $table->unique(['codigo_compania', 'cronograma', 'tipo_entrega', 'version'], 'presentations_unique_with_version');
-        });
     }
 
     /**
@@ -36,7 +31,7 @@ return new class extends Migration
      */
     public function down(): void
     {
-        // No hacer nada en down para evitar problemas
+        // No restaurar la clave única problemática
     }
 
     /**
