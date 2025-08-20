@@ -169,12 +169,19 @@ class MonthlyPresentationController extends \App\Infrastructure\Http\Controllers
             $filename = time() . '_' . $file->getClientOriginalName();
             $filePath = $file->storeAs('monthly-presentations', $filename, 'public');
 
-            // Crear presentación
+            // Crear presentación con versión
+            $nextVersion = Presentation::getNextVersion(
+                $request->codigo_compania,
+                $request->cronograma,
+                'Mensual'
+            );
+            
             $presentation = Presentation::create([
                 'user_id' => Auth::id(),
                 'codigo_compania' => $request->codigo_compania,
                 'cronograma' => $request->cronograma,
                 'tipo_entrega' => 'Mensual',
+                'version' => $nextVersion,
                 'estado' => 'VACIO',
                 'original_file_path' => $filePath,
                 'original_filename' => $file->getClientOriginalName(),
