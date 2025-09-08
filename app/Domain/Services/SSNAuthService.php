@@ -75,6 +75,16 @@ class SSNAuthService
                     'verify' => base_path($certPath),
                     'timeout' => 30,
                     'connect_timeout' => 10,
+                    'curl' => [
+                        CURLOPT_SSL_VERIFYPEER => true,
+                        CURLOPT_SSL_VERIFYHOST => 2,
+                        CURLOPT_CAINFO => base_path($certPath),
+                    ],
+                ]);
+                
+                Log::info('Usando certificado SSN para autenticación', [
+                    'cert_path' => base_path($certPath),
+                    'auth_url' => $this->getAuthUrl(),
                 ]);
             } else {
                 // Si no hay certificado, deshabilitar verificación SSL (solo para desarrollo)
@@ -82,6 +92,10 @@ class SSNAuthService
                     'verify' => false,
                     'timeout' => 30,
                     'connect_timeout' => 10,
+                    'curl' => [
+                        CURLOPT_SSL_VERIFYPEER => false,
+                        CURLOPT_SSL_VERIFYHOST => 0,
+                    ],
                 ]);
                 
                 Log::warning('Certificado SSN no encontrado para autenticación, deshabilitando verificación SSL', [

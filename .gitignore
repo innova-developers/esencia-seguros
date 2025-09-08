@@ -22,6 +22,12 @@ yarn-error.log
 /.nova
 /.vscode
 /.zed
+
+# Certificados SSN (archivos sensibles)
+/certs/*.crt
+/certs/*.pem
+/certs/*.p12
+/certs/*.pfx
 docker/mysql/#ib_16384_0.dblwr
 docker/mysql/#ib_16384_1.dblwr
 docker/mysql/binlog.000001

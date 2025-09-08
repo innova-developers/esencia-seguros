@@ -254,6 +254,16 @@ class SSNService
                 'verify' => base_path($certPath),
                 'timeout' => 30,
                 'connect_timeout' => 10,
+                'curl' => [
+                    CURLOPT_SSL_VERIFYPEER => true,
+                    CURLOPT_SSL_VERIFYHOST => 2,
+                    CURLOPT_CAINFO => base_path($certPath),
+                ],
+            ]);
+            
+            Log::info('Usando certificado SSN para peticiones HTTPS', [
+                'cert_path' => base_path($certPath),
+                'url' => $url,
             ]);
         } else {
             // Si no hay certificado, deshabilitar verificación SSL (solo para desarrollo)
@@ -261,6 +271,10 @@ class SSNService
                 'verify' => false,
                 'timeout' => 30,
                 'connect_timeout' => 10,
+                'curl' => [
+                    CURLOPT_SSL_VERIFYPEER => false,
+                    CURLOPT_SSL_VERIFYHOST => 0,
+                ],
             ]);
             
             Log::warning('Certificado SSN no encontrado, deshabilitando verificación SSL', [
