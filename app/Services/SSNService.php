@@ -250,18 +250,22 @@ class SSNService
         
         // Si existe el certificado, configurarlo para las peticiones
         if ($certPath && file_exists(base_path($certPath))) {
+            // Crear bundle de certificados que incluya el certificado SSN + certificados del sistema
+            $bundlePath = $this->createCertificateBundle(base_path($certPath));
+            
             $request = $request->withOptions([
                 'timeout' => 30,
                 'connect_timeout' => 10,
                 'curl' => [
                     CURLOPT_SSL_VERIFYPEER => true,
                     CURLOPT_SSL_VERIFYHOST => 2,
-                    CURLOPT_CAINFO => base_path($certPath),
+                    CURLOPT_CAINFO => $bundlePath,
                 ],
             ]);
             
-            Log::info('Usando certificado SSN para peticiones HTTPS', [
+            Log::info('Usando bundle de certificados SSN para peticiones HTTPS', [
                 'cert_path' => base_path($certPath),
+                'bundle_path' => $bundlePath,
                 'url' => $url,
             ]);
         } else {
@@ -504,5 +508,58 @@ class SSNService
             'base_url' => $this->baseUrl,
             'has_token' => !empty($this->token),
         ];
+    }
+
+    /**
+     * Crea un bundle de certificados que incluye el certificado SSN + certificados del sistema
+     */
+    private function createCertificateBundle(string $ssnCertPath): string
+    {
+        $bundlePath = storage_path('app/ssn_ca_bundle.crt');
+        
+        // Verificar si el bundle ya existe y es reciente (menos de 24 horas)
+        if (file_exists($bundlePath) && (time() - filemtime($bundlePath)) < 86400) {
+            return $bundlePath;
+        }
+        
+        $bundle = '';
+        
+        // Intentar obtener certificados del sistema
+        $systemCaPaths = [
+            '/etc/ssl/certs/ca-certificates.crt',
+            '/etc/ssl/certs/ca-bundle.crt',
+            '/etc/pki/tls/certs/ca-bundle.crt',
+            '/usr/local/share/ca-certificates/ca-certificates.crt',
+            '/etc/ssl/cert.pem',
+        ];
+        
+        $systemCaFound = false;
+        foreach ($systemCaPaths as $systemPath) {
+            if (file_exists($systemPath)) {
+                $bundle .= file_get_contents($systemPath) . "\n";
+                $systemCaFound = true;
+                Log::info('Usando certificados del sistema', ['path' => $systemPath]);
+                break;
+            }
+        }
+        
+        // Si no se encontraron certificados del sistema, usar solo el certificado SSN
+        if (!$systemCaFound) {
+            Log::warning('No se encontraron certificados del sistema, usando solo certificado SSN');
+        }
+        
+        // Agregar el certificado SSN al bundle
+        $bundle .= file_get_contents($ssnCertPath) . "\n";
+        
+        // Guardar el bundle
+        file_put_contents($bundlePath, $bundle);
+        
+        Log::info('Bundle de certificados SSN creado', [
+            'bundle_path' => $bundlePath,
+            'size' => strlen($bundle),
+            'system_ca_found' => $systemCaFound,
+        ]);
+        
+        return $bundlePath;
     }
 } 
