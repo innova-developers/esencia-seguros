@@ -65,7 +65,32 @@ class SSNAuthService
     private function realAuthentication(string $username, string $cia, string $password): ?array
     {
         try {
-            $response = Http::withHeaders($this->getHeaders())->post($this->getAuthUrl(), [
+            // Configurar el certificado para las peticiones HTTPS
+            $certPath = config('services.ssn.cert_path');
+            $request = Http::withHeaders($this->getHeaders());
+            
+            // Si existe el certificado, configurarlo para las peticiones
+            if ($certPath && file_exists(base_path($certPath))) {
+                $request = $request->withOptions([
+                    'verify' => base_path($certPath),
+                    'timeout' => 30,
+                    'connect_timeout' => 10,
+                ]);
+            } else {
+                // Si no hay certificado, deshabilitar verificación SSL (solo para desarrollo)
+                $request = $request->withOptions([
+                    'verify' => false,
+                    'timeout' => 30,
+                    'connect_timeout' => 10,
+                ]);
+                
+                Log::warning('Certificado SSN no encontrado para autenticación, deshabilitando verificación SSL', [
+                    'cert_path' => $certPath,
+                    'full_path' => base_path($certPath),
+                ]);
+            }
+
+            $response = $request->post($this->getAuthUrl(), [
                 'USER' => $username,
                 'CIA' => $cia,
                 'PASSWORD' => $password,

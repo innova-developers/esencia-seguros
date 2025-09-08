@@ -22,11 +22,16 @@ class LoginController extends Controller
 
     public function showLoginForm()
     {
-        ActivityLog::log(
-            'view_login_form',
-            'Usuario accedió al formulario de login',
-            'auth'
-        );
+        try {
+            ActivityLog::log(
+                'view_login_form',
+                'Usuario accedió al formulario de login',
+                'auth'
+            );
+        } catch (\Exception $e) {
+            // Log del error pero no fallar la vista
+            \Log::error('Error logging view_login_form: ' . $e->getMessage());
+        }
 
         return view('auth.login');
     }

@@ -244,7 +244,30 @@ class SSNService
             $headers['token'] = $token;
         }
 
+        // Configurar el certificado para las peticiones HTTPS
+        $certPath = config('services.ssn.cert_path');
         $request = Http::withHeaders($headers);
+        
+        // Si existe el certificado, configurarlo para las peticiones
+        if ($certPath && file_exists(base_path($certPath))) {
+            $request = $request->withOptions([
+                'verify' => base_path($certPath),
+                'timeout' => 30,
+                'connect_timeout' => 10,
+            ]);
+        } else {
+            // Si no hay certificado, deshabilitar verificación SSL (solo para desarrollo)
+            $request = $request->withOptions([
+                'verify' => false,
+                'timeout' => 30,
+                'connect_timeout' => 10,
+            ]);
+            
+            Log::warning('Certificado SSN no encontrado, deshabilitando verificación SSL', [
+                'cert_path' => $certPath,
+                'full_path' => base_path($certPath),
+            ]);
+        }
 
         if (!empty($params)) {
             $url .= '?' . http_build_query($params);

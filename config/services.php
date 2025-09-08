@@ -42,6 +42,7 @@ return [
         'mock_enabled' => env('SSN_MOCK_ENABLED', false),
         'mock_token' => env('SSN_MOCK_TOKEN'),
         'mock_expiration' => env('SSN_MOCK_EXPIRATION', '31/12/2025 23:59:59'),
+        'cert_path' => env('SSN_CERT_PATH', './certs/USERTrustRSACertificationAuthority.crt'),
     ],
 
     'resend' => [
