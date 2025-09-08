@@ -251,7 +251,6 @@ class SSNService
         // Si existe el certificado, configurarlo para las peticiones
         if ($certPath && file_exists(base_path($certPath))) {
             $request = $request->withOptions([
-                'verify' => base_path($certPath),
                 'timeout' => 30,
                 'connect_timeout' => 10,
                 'curl' => [
