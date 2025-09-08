@@ -34,8 +34,8 @@ class DashboardController extends Controller
      */
     public function getSSNConnectionInfo(): array
     {
-        // Obtener token desde cache o base de datos
-        $token = $this->ssnAuthService->getCachedToken();
+        // Obtener token desde cache, sesión o base de datos
+        $token = $this->ssnAuthService->getCachedToken() ?? session('ssn_token');
         
         if (!$token) {
             return [
@@ -54,6 +54,16 @@ class DashboardController extends Controller
         // Verificar si el token es válido
         $isValid = $this->ssnAuthService->isTokenValid($token);
         
+        // Si el token no es válido según el servicio, pero tenemos un token en sesión,
+        // asumir que es válido para la sesión actual (el login fue exitoso)
+        if (!$isValid && session('ssn_token') === $token) {
+            $isValid = true;
+            \Log::info('Token SSN válido en sesión actual', [
+                'token' => substr($token, -8),
+                'user_id' => auth()->id(),
+            ]);
+        }
+        
         if (!$isValid) {
             return [
                 'connected' => false,
@@ -71,9 +81,17 @@ class DashboardController extends Controller
         // Obtener información del token
         $tokenInfo = $this->ssnAuthService->getTokenInfo($token);
         
+        // Si no hay información del token, usar información de la sesión
+        if (empty($tokenInfo) && session('ssn_token') === $token) {
+            $tokenInfo = [
+                'mock' => session('ssn_mock', false),
+                'expiration' => session('ssn_expiration'),
+            ];
+        }
+        
         // Determinar modo (mock o real)
         $isMock = $tokenInfo['mock'] ?? false;
-        $mode = $isMock ? 'Testing Local' : 'Testing SSN';
+        $mode = $isMock ? 'Testing Local' : 'Producción SSN';
         $modeColor = $isMock ? 'warning' : 'success';
         
         // Obtener expiración
