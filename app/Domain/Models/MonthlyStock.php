@@ -130,6 +130,41 @@ class MonthlyStock extends Model
     }
 
     /**
+     * Formatear fecha para SSN (DDMMYYYY)
+     */
+    private function formatDateForSSN(?string $date): string
+    {
+        if (!$date || trim($date) === '') {
+            // Si no hay fecha, usar la fecha actual en formato DDMMYYYY
+            return now()->format('dmY');
+        }
+        
+        try {
+            // Si ya está en formato DDMMYYYY, devolverlo tal como está
+            if (preg_match('/^\d{8}$/', $date)) {
+                return $date;
+            }
+            
+            $dateObj = \DateTime::createFromFormat('Y-m-d', $date);
+            if ($dateObj) {
+                return $dateObj->format('dmY');
+            }
+            
+            // Intentar otros formatos comunes
+            $dateObj = \DateTime::createFromFormat('d/m/Y', $date);
+            if ($dateObj) {
+                return $dateObj->format('dmY');
+            }
+            
+            // Si no se puede parsear, usar la fecha actual
+            return now()->format('dmY');
+        } catch (\Exception $e) {
+            // Si hay error, usar la fecha actual
+            return now()->format('dmY');
+        }
+    }
+
+    /**
      * Obtener el JSON para enviar a SSN
      */
     public function getSsnJson(): array
@@ -172,7 +207,7 @@ class MonthlyStock extends Model
 
         // Agregar campos específicos si aplica
         if ($this->fecha_pase_vt) {
-            $inversionesJson['fechaPaseVT'] = $this->fecha_pase_vt;
+            $inversionesJson['fechaPaseVT'] = $this->formatDateForSSN($this->fecha_pase_vt);
             $inversionesJson['precioPaseVT'] = $this->precio_pase_vt;
         }
 
@@ -192,8 +227,8 @@ class MonthlyStock extends Model
             'tipoPF' => $this->tipo_pf,
             'bic' => $this->bic,
             'cdf' => $this->cdf,
-            'fechaConstitucion' => $this->fecha_constitucion,
-            'fechaVencimiento' => $this->fecha_vencimiento_pf,
+            'fechaConstitucion' => $this->formatDateForSSN($this->fecha_constitucion),
+            'fechaVencimiento' => $this->formatDateForSSN($this->fecha_vencimiento_pf),
             'moneda' => $this->moneda,
             'valorNominalOrigen' => $this->valor_nominal_origen,
             'valorNominalNacional' => $this->valor_nominal_nacional,
@@ -223,8 +258,8 @@ class MonthlyStock extends Model
         return array_merge($json, [
             'CodigoSGR' => $this->codigo_sgr,
             'CodigoCheque' => $this->codigo_cheque,
-            'FechaEmision' => $this->fecha_emision,
-            'FechaVencimiento' => $this->fecha_vencimiento_cheque,
+            'FechaEmision' => $this->formatDateForSSN($this->fecha_emision),
+            'FechaVencimiento' => $this->formatDateForSSN($this->fecha_vencimiento_cheque),
             'moneda' => $this->moneda,
             'valorNominal' => $this->valor_nominal,
             'valorAdquisicion' => $this->valor_adquisicion,
@@ -236,7 +271,7 @@ class MonthlyStock extends Model
             'tasa' => $this->tasa,
             'valorContable' => $this->valor_contable,
             'financiera' => $this->financiera ? '1' : '0',
-            'fechaAdquisicion' => $this->fecha_adquisicion,
+            'fechaAdquisicion' => $this->formatDateForSSN($this->fecha_adquisicion),
         ]);
     }
 

@@ -139,13 +139,19 @@ class Presentation extends Model
     /**
      * Formatear fecha para SSN (DDMMYYYY)
      */
-    private function formatDateForSSN(?string $date): ?string
+    private function formatDateForSSN(?string $date): string
     {
-        if (!$date) {
-            return null;
+        if (!$date || trim($date) === '') {
+            // Si no hay fecha, usar la fecha actual en formato DDMMYYYY
+            return now()->format('dmY');
         }
         
         try {
+            // Si ya está en formato DDMMYYYY, devolverlo tal como está
+            if (preg_match('/^\d{8}$/', $date)) {
+                return $date;
+            }
+            
             $dateObj = \DateTime::createFromFormat('Y-m-d', $date);
             if ($dateObj) {
                 return $dateObj->format('dmY');
@@ -157,9 +163,11 @@ class Presentation extends Model
                 return $dateObj->format('dmY');
             }
             
-            return $date; // Si no se puede parsear, devolver como está
+            // Si no se puede parsear, usar la fecha actual
+            return now()->format('dmY');
         } catch (\Exception $e) {
-            return $date;
+            // Si hay error, usar la fecha actual
+            return now()->format('dmY');
         }
     }
 
