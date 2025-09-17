@@ -176,13 +176,25 @@ class Presentation extends Model
      */
     public function getSsnJson(): array
     {
-        // Usar el servicio para generar el JSON correcto según el tipo de presentación
         if ($this->isMensual()) {
             $stocks = $this->monthlyStocks ? $this->monthlyStocks->toArray() : [];
             return app(\App\Services\ExcelProcessorService::class)->generateMonthlySsnJson($stocks, $this->cronograma);
         } else {
-            $operations = $this->weeklyOperations ? $this->weeklyOperations->toArray() : [];
-            return app(\App\Services\ExcelProcessorService::class)->generateSsnJson($operations, $this->cronograma);
+            // Para presentaciones semanales, usar los métodos de los modelos individuales
+            $operations = $this->weeklyOperations ? $this->weeklyOperations : collect();
+            $ssnOperations = [];
+            
+            foreach ($operations as $operation) {
+                $ssnOperations[] = $operation->getSsnJson();
+            }
+            
+            return [
+                'codigoCompania' => config('services.ssn.cia', '0001'),
+                'cronograma' => $this->cronograma,
+                'tipoEntrega' => 'SEMANAL',
+                'operaciones' => $ssnOperations,
+                'totalOperaciones' => count($ssnOperations)
+            ];
         }
     }
 
