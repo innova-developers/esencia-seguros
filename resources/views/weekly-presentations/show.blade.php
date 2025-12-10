@@ -74,6 +74,7 @@
                             <div>Compras: <strong>{{ $presentation->weeklyOperations->where('tipo_operacion', 'C')->count() }}</strong></div>
                             <div>Ventas: <strong>{{ $presentation->weeklyOperations->where('tipo_operacion', 'V')->count() }}</strong></div>
                             <div>Canjes: <strong>{{ $presentation->weeklyOperations->where('tipo_operacion', 'J')->count() }}</strong></div>
+                            <div>Plazos Fijos: <strong>{{ $presentation->weeklyOperations->where('tipo_operacion', 'P')->count() }}</strong></div>
                         </div>
                     </div>
                 </div>
@@ -97,7 +98,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach($presentation->weeklyOperations as $op)
+                            @foreach($presentation->weeklyOperations->where('tipo_operacion', '!=', 'P') as $op)
                             @php
                                 $badge = match($op->tipo_operacion) {
                                     'C' => 'success',
@@ -139,6 +140,60 @@
                         </tbody>
                     </table>
                 </div>
+
+                @if($presentation->weeklyOperations->where('tipo_operacion', 'P')->count() > 0)
+                <h5 class="mt-5 mb-3"><i class="fas fa-piggy-bank me-2"></i>Plazos Fijos</h5>
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover" id="tabla-plazos-fijos">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Tipo PF</th>
+                                <th>BIC</th>
+                                <th>CDF</th>
+                                <th>Fecha Constitución</th>
+                                <th>Fecha Vencimiento</th>
+                                <th>Moneda</th>
+                                <th>Valor Nominal Origen</th>
+                                <th>Valor Nominal Nacional</th>
+                                <th>Código Afectación</th>
+                                <th>Tipo Tasa</th>
+                                <th>Tasa</th>
+                                <th>Título Deuda</th>
+                                <th>Código Título</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($presentation->weeklyOperations->where('tipo_operacion', 'P') as $pf)
+                            <tr>
+                                <td><code>{{ $pf->tipo_pf ?? '' }}</code></td>
+                                <td><code>{{ $pf->bic ?? '' }}</code></td>
+                                <td><code>{{ $pf->cdf ?? '' }}</code></td>
+                                <td>{{ $pf->fecha_constitucion_display ?? '' }}</td>
+                                <td>{{ $pf->fecha_vencimiento_display ?? '' }}</td>
+                                <td>{{ $pf->moneda ?? '' }}</td>
+                                <td>{{ $pf->valor_nominal_origen ? number_format($pf->valor_nominal_origen, 0, ',', '.') : '' }}</td>
+                                <td>{{ $pf->valor_nominal_nacional ? number_format($pf->valor_nominal_nacional, 0, ',', '.') : '' }}</td>
+                                <td>{{ $pf->codigo_afectacion ?? '' }}</td>
+                                <td>
+                                    @if($pf->tipo_tasa)
+                                        <span class="badge bg-info">{{ $pf->tipo_tasa === 'F' ? 'Fija' : 'Variable' }}</span>
+                                    @endif
+                                </td>
+                                <td>{{ $pf->tasa ? number_format($pf->tasa, 3, ',', '.') : '' }}</td>
+                                <td>
+                                    @if($pf->titulo_deuda !== null)
+                                        <span class="badge bg-{{ $pf->titulo_deuda ? 'success' : 'secondary' }}">
+                                            {{ $pf->titulo_deuda ? 'Sí' : 'No' }}
+                                        </span>
+                                    @endif
+                                </td>
+                                <td><code>{{ $pf->codigo_titulo ?? '' }}</code></td>
+                            </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+                @endif
                 <!-- Acciones según estado -->
                 <div class="mt-4 text-center">
                     @if($presentation->estado === 'CARGADO')
@@ -247,7 +302,7 @@
               </tr>
             </thead>
             <tbody>
-              @foreach($presentation->weeklyOperations as $op)
+              @foreach($presentation->weeklyOperations->where('tipo_operacion', '!=', 'P') as $op)
               @php
                   $badge = match($op->tipo_operacion) {
                       'C' => 'success',
@@ -284,6 +339,21 @@
                 <td>{{ $precioVenta }}</td>
                 <td>{{ $op->fecha_pase_vt_display ?? '' }}</td>
                 <td>{{ $op->precio_pase_vt ? number_format($op->precio_pase_vt, 4, ',', '.') : '' }}</td>
+              </tr>
+              @endforeach
+              @foreach($presentation->weeklyOperations->where('tipo_operacion', 'P') as $pf)
+              <tr>
+                <td><span class="badge bg-info">PLAZO FIJO</span></td>
+                <td colspan="2"><code>{{ $pf->tipo_pf ?? '' }} - {{ $pf->bic ?? '' }}</code></td>
+                <td colspan="2"><code>{{ $pf->cdf ?? '' }}</code></td>
+                <td>{{ $pf->moneda ?? '' }}</td>
+                <td>{{ $pf->fecha_constitucion_display ?? '' }}</td>
+                <td>{{ $pf->fecha_vencimiento_display ?? '' }}</td>
+                <td>{{ $pf->valor_nominal_origen ? number_format($pf->valor_nominal_origen, 0, ',', '.') : '' }}</td>
+                <td>{{ $pf->valor_nominal_nacional ? number_format($pf->valor_nominal_nacional, 0, ',', '.') : '' }}</td>
+                <td>{{ $pf->codigo_afectacion ?? '' }}</td>
+                <td>{{ $pf->tipo_tasa ?? '' }}</td>
+                <td>{{ $pf->tasa ? number_format($pf->tasa, 3, ',', '.') : '' }}</td>
               </tr>
               @endforeach
             </tbody>
@@ -550,5 +620,39 @@ function showSsnParamsModal() {
 }
 </script>
 
+<style>
+/* Estilos para la tabla de plazos fijos */
+#tabla-plazos-fijos {
+    min-width: 1500px;
+}
+
+#tabla-plazos-fijos th,
+#tabla-plazos-fijos td {
+    white-space: nowrap;
+    min-width: 100px;
+}
+
+#tabla-plazos-fijos th:nth-child(1),
+#tabla-plazos-fijos td:nth-child(1) {
+    min-width: 80px; /* Tipo PF */
+}
+
+#tabla-plazos-fijos th:nth-child(2),
+#tabla-plazos-fijos td:nth-child(2) {
+    min-width: 120px; /* BIC */
+}
+
+#tabla-plazos-fijos th:nth-child(3),
+#tabla-plazos-fijos td:nth-child(3) {
+    min-width: 120px; /* CDF */
+}
+
+#tabla-plazos-fijos th:nth-child(7),
+#tabla-plazos-fijos td:nth-child(7),
+#tabla-plazos-fijos th:nth-child(8),
+#tabla-plazos-fijos td:nth-child(8) {
+    min-width: 140px; /* Valores nominales */
+}
+</style>
 
 @endsection 

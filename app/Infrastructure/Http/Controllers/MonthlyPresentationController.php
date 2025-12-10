@@ -263,41 +263,9 @@ class MonthlyPresentationController extends Controller
             $stocks = json_decode($request->input('stocks'), true);
             $month = $request->input('month');
 
-            // Generar el JSON completo usando el servicio
-            $codigoCompania = env('SSN_CIA', '1');
-
-            $ssnJson = [
-                'codigoCompania' => $codigoCompania,
-                'cronograma' => $month,
-                'tipoEntrega' => 'Mensual',
-                'stocks' => []
-            ];
-
-            // Convertir los stocks al formato correcto
-            foreach ($stocks as $stock) {
-                $ssnStock = [
-                    'tipo' => $stock['tipo'], // Siempre 'S' para mensuales
-                    'tipoEspecie' => $stock['tipo_especie'],
-                    'codigoEspecie' => $stock['codigo_especie'],
-                    'cantidadDevengadoEspecies' => (float) $stock['cantidad_devengado_especies'],
-                    'cantidadPercibidoEspecies' => (float) $stock['cantidad_percibido_especies'],
-                    'codigoAfectacion' => $stock['codigo_afectacion'],
-                    'tipoValuacion' => $stock['tipo_valuacion'],
-                    'conCotizacion' => $stock['con_cotizacion'],
-                    'libreDisponibilidad' => $stock['libre_disponibilidad'],
-                    'emisorGrupoEconomico' => $stock['emisor_grupo_economico'],
-                    'emisorArtRet' => $stock['emisor_art_ret'],
-                    'previsionDesvalorizacion' => $stock['prevision_desvalorizacion'],
-                    'valorContable' => (float) $stock['valor_contable'],
-                    'fechaPaseVt' => $stock['fecha_pase_vt'],
-                    'precioPaseVt' => $stock['precio_pase_vt'],
-                    'enCustodia' => $stock['en_custodia'],
-                    'financiera' => $stock['financiera'],
-                    'valorFinanciero' => $stock['valor_financiero'],
-                ];
-
-                $ssnJson['stocks'][] = $ssnStock;
-            }
+            // Usar el servicio para generar el JSON correctamente
+            $excelProcessor = app(\App\Services\ExcelProcessorService::class);
+            $ssnJson = $excelProcessor->generateMonthlySsnJson($stocks, $month);
 
             ActivityLog::create([
                 'user_id' => auth()->id(),

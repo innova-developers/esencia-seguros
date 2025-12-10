@@ -121,6 +121,7 @@
                                 </button>
                             </div>
                         </div>
+                        <!-- Tabla para Inversiones y Cheques -->
                         <div class="table-responsive">
                             <div class="table-container">
                                 <table class="table table-striped table-hover preview-table" id="previewTable">
@@ -149,6 +150,45 @@
                                     </tbody>
                                 </table>
                                 <div class="scroll-indicator" id="scrollIndicator">
+                                    <i class="fas fa-arrows-alt-h me-1"></i>
+                                    Desliza horizontalmente para ver más columnas
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Tabla para Plazos Fijos -->
+                        <div class="table-responsive mt-4" id="plazosFijosTableContainer" style="display: none;">
+                            <div class="table-container">
+                                <h5 class="mb-3"><i class="fas fa-piggy-bank me-2"></i>Plazos Fijos</h5>
+                                <table class="table table-striped table-hover preview-table" id="previewTablePF">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Tipo</th>
+                                            <th>Nombre</th>
+                                            <th>Tipo PF</th>
+                                            <th>BIC</th>
+                                            <th>CDF</th>
+                                            <th>Fecha Constitución</th>
+                                            <th>Fecha Vencimiento</th>
+                                            <th>Moneda</th>
+                                            <th>Valor Nominal Origen</th>
+                                            <th>Valor Nominal Nacional</th>
+                                            <th>Emisor Grupo Econ.</th>
+                                            <th>Libre Disponibilidad</th>
+                                            <th>En Custodia</th>
+                                            <th>Código Afect.</th>
+                                            <th>Tipo Tasa</th>
+                                            <th>Tasa</th>
+                                            <th>Título Deuda</th>
+                                            <th>Código Título</th>
+                                            <th>Valor Contable</th>
+                                            <th>Financiera</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="previewTableBodyPF">
+                                    </tbody>
+                                </table>
+                                <div class="scroll-indicator" id="scrollIndicatorPF">
                                     <i class="fas fa-arrows-alt-h me-1"></i>
                                     Desliza horizontalmente para ver más columnas
                                 </div>
@@ -439,6 +479,10 @@
             min-width: 1200px; /* Ancho mínimo para mostrar todas las columnas */
         }
 
+        #previewTablePF {
+            min-width: 1800px; /* Ancho mínimo para la tabla de plazos fijos */
+        }
+
         /* Estilos para indicar scroll horizontal */
         .table-container {
             position: relative;
@@ -692,7 +736,8 @@
             const previewSection = document.getElementById('previewSection');
             const summaryInfo = document.getElementById('summaryInfo');
             const tableBody = document.getElementById('previewTableBody');
-            const scrollIndicator = document.getElementById('scrollIndicator');
+            const tableBodyPF = document.getElementById('previewTableBodyPF');
+            const plazosFijosContainer = document.getElementById('plazosFijosTableContainer');
 
             // Mostrar resumen
             summaryInfo.innerHTML = `
@@ -702,11 +747,16 @@
                 <div>Otros: <strong>${data.summary.por_tipo.otros || 0}</strong></div>
             `;
 
-            // Limpiar tabla
+            // Limpiar tablas
             tableBody.innerHTML = '';
+            tableBodyPF.innerHTML = '';
 
-            // Llenar tabla con datos
-            data.stocks.forEach(stock => {
+            // Separar stocks por tipo
+            const inversionesYCheques = data.stocks.filter(s => s.tipo !== 'P');
+            const plazosFijos = data.stocks.filter(s => s.tipo === 'P');
+
+            // Llenar tabla de inversiones y cheques
+            inversionesYCheques.forEach(stock => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td><span class="badge bg-${getStockBadgeColor(stock.tipo)}">${getStockLabel(stock.tipo)}</span></td>
@@ -730,10 +780,43 @@
                 tableBody.appendChild(row);
             });
 
+            // Llenar tabla de plazos fijos
+            if (plazosFijos.length > 0) {
+                plazosFijosContainer.style.display = 'block';
+                plazosFijos.forEach(stock => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td><span class="badge bg-primary">PLAZO FIJO</span></td>
+                        <td>${stock.nombre || '-'}</td>
+                        <td><code>${stock.tipo_pf || '-'}</code></td>
+                        <td><code>${stock.bic || '-'}</code></td>
+                        <td><code>${stock.cdf || '-'}</code></td>
+                        <td>${formatDateFromDDMMYYYY(stock.fecha_constitucion) || '-'}</td>
+                        <td>${formatDateFromDDMMYYYY(stock.fecha_vencimiento_pf) || '-'}</td>
+                        <td>${stock.moneda || '-'}</td>
+                        <td>${stock.valor_nominal_origen ? formatNumber(stock.valor_nominal_origen) : '-'}</td>
+                        <td>${stock.valor_nominal_nacional ? formatNumber(stock.valor_nominal_nacional) : '-'}</td>
+                        <td>${stock.emisor_grupo_economico ? 'Sí' : 'No'}</td>
+                        <td>${stock.libre_disponibilidad ? 'Sí' : 'No'}</td>
+                        <td>${stock.en_custodia ? 'Sí' : 'No'}</td>
+                        <td>${stock.codigo_afectacion || '-'}</td>
+                        <td>${stock.tipo_tasa ? `<span class="badge bg-info">${stock.tipo_tasa === 'F' ? 'Fija' : 'Variable'}</span>` : '-'}</td>
+                        <td>${stock.tasa ? formatNumber(stock.tasa) : '-'}</td>
+                        <td>${stock.titulo_deuda !== null && stock.titulo_deuda !== undefined ? `<span class="badge bg-${stock.titulo_deuda ? 'success' : 'secondary'}">${stock.titulo_deuda ? 'Sí' : 'No'}</span>` : '-'}</td>
+                        <td><code>${stock.codigo_titulo || '-'}</code></td>
+                        <td>${stock.valor_contable ? formatNumber(stock.valor_contable) : '-'}</td>
+                        <td>${stock.financiera ? 'Sí' : 'No'}</td>
+                    `;
+                    tableBodyPF.appendChild(row);
+                });
+            } else {
+                plazosFijosContainer.style.display = 'none';
+            }
+
             previewSection.style.display = 'block';
             previewSection.scrollIntoView({ behavior: 'smooth' });
 
-            // Configurar scroll horizontal
+            // Configurar scroll horizontal para ambas tablas
             setupHorizontalScroll();
 
             // Mostrar el botón Guardar Borrador solo si hay datos cargados
@@ -742,35 +825,40 @@
 
         // Configurar scroll horizontal
         function setupHorizontalScroll() {
-            const tableContainer = document.querySelector('.table-responsive');
-            const scrollIndicator = document.getElementById('scrollIndicator');
+            const tableContainers = document.querySelectorAll('.table-responsive');
+            
+            tableContainers.forEach((tableContainer, index) => {
+                const scrollIndicator = index === 0 
+                    ? document.getElementById('scrollIndicator')
+                    : document.getElementById('scrollIndicatorPF');
 
-            if (!tableContainer || !scrollIndicator) return;
+                if (!tableContainer || !scrollIndicator) return;
 
-            // Ocultar indicador si no hay scroll horizontal
-            function checkScroll() {
-                const hasHorizontalScroll = tableContainer.scrollWidth > tableContainer.clientWidth;
-                scrollIndicator.style.display = hasHorizontalScroll ? 'block' : 'none';
-            }
+                // Ocultar indicador si no hay scroll horizontal
+                function checkScroll() {
+                    const hasHorizontalScroll = tableContainer.scrollWidth > tableContainer.clientWidth;
+                    scrollIndicator.style.display = hasHorizontalScroll ? 'block' : 'none';
+                }
 
-            // Verificar al cargar
-            checkScroll();
+                // Verificar al cargar
+                checkScroll();
 
-            // Verificar al cambiar tamaño de ventana
-            window.addEventListener('resize', checkScroll);
+                // Verificar al cambiar tamaño de ventana
+                window.addEventListener('resize', checkScroll);
 
-            // Ocultar indicador cuando se hace scroll
-            tableContainer.addEventListener('scroll', function() {
-                scrollIndicator.style.opacity = '0.3';
-                clearTimeout(scrollIndicator.timeout);
-                scrollIndicator.timeout = setTimeout(() => {
+                // Ocultar indicador cuando se hace scroll
+                tableContainer.addEventListener('scroll', function() {
+                    scrollIndicator.style.opacity = '0.3';
+                    clearTimeout(scrollIndicator.timeout);
+                    scrollIndicator.timeout = setTimeout(() => {
+                        scrollIndicator.style.opacity = '0.8';
+                    }, 1000);
+                });
+
+                // Mostrar indicador cuando se detiene el scroll
+                tableContainer.addEventListener('scrollend', function() {
                     scrollIndicator.style.opacity = '0.8';
-                }, 1000);
-            });
-
-            // Mostrar indicador cuando se detiene el scroll
-            tableContainer.addEventListener('scrollend', function() {
-                scrollIndicator.style.opacity = '0.8';
+                });
             });
         }
 
@@ -879,6 +967,26 @@
             try {
                 const date = new Date(dateString);
                 return date.toLocaleDateString('es-AR');
+            } catch (e) {
+                return dateString;
+            }
+        }
+
+        function formatDateFromDDMMYYYY(dateString) {
+            if (!dateString) return '-';
+            try {
+                // Si ya está en formato DD/MM/YYYY, devolverlo
+                if (dateString.includes('/')) {
+                    return dateString;
+                }
+                // Si está en formato DDMMYYYY, convertirlo a DD/MM/YYYY
+                if (dateString.length === 8 && /^\d{8}$/.test(dateString)) {
+                    const day = dateString.substring(0, 2);
+                    const month = dateString.substring(2, 4);
+                    const year = dateString.substring(4, 8);
+                    return `${day}/${month}/${year}`;
+                }
+                return dateString;
             } catch (e) {
                 return dateString;
             }

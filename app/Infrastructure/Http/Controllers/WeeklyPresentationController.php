@@ -537,33 +537,62 @@ class WeeklyPresentationController extends Controller
 
             // Guardar operaciones
             foreach ($operations as $op) {
-                $operationData = [
-                    'tipo_operacion' => $op['tipo_operacion'],
-                    'tipo_especie' => $op['tipo_especie'],
-                    'codigo_especie' => $op['codigo_especie'],
-                    'cant_especies' => $op['cant_especies'],
-                    'codigo_afectacion' => $op['codigo_afectacion'],
-                    'tipo_valuacion' => $op['tipo_valuacion'],
-                    'fecha_movimiento' => $this->formatDateForDatabase($op['fecha_movimiento']),
-                    'fecha_liquidacion' => $this->formatDateForDatabase($op['fecha_liquidacion']),
-                ];
-
-                // Agregar campos específicos según el tipo de operación
-                if ($op['tipo_operacion'] === 'C') {
-                    $operationData['precio_compra'] = $op['precio_compra'] ?? null;
-
-                    // Log para debuggear
-                    \Log::info('Guardando operación de compra', [
+                // Construir datos según el tipo de operación
+                if ($op['tipo_operacion'] === 'P') {
+                    // Plazos Fijos tienen estructura completamente diferente
+                    // Incluir campos comunes como null para evitar errores de MySQL
+                    $operationData = [
                         'tipo_operacion' => $op['tipo_operacion'],
-                        'precio_compra_original' => $op['precio_compra'] ?? 'NULL',
-                        'precio_compra_final' => $operationData['precio_compra'],
-                        'operation_data' => $operationData
-                    ]);
+                        'tipo_especie' => null,
+                        'codigo_especie' => null,
+                        'cant_especies' => null,
+                        'tipo_valuacion' => null,
+                        'fecha_movimiento' => null,
+                        'fecha_liquidacion' => null,
+                        'tipo_pf' => $op['tipo_pf'] ?? null,
+                        'bic' => $op['bic'] ?? null,
+                        'cdf' => $op['cdf'] ?? null,
+                        'fecha_constitucion' => $this->formatDateForDatabase($op['fecha_constitucion'] ?? null),
+                        'fecha_vencimiento' => $this->formatDateForDatabase($op['fecha_vencimiento'] ?? null),
+                        'moneda' => $op['moneda'] ?? null,
+                        'valor_nominal_origen' => $op['valor_nominal_origen'] ?? null,
+                        'valor_nominal_nacional' => $op['valor_nominal_nacional'] ?? null,
+                        'codigo_afectacion' => $op['codigo_afectacion'] ?? null,
+                        'tipo_tasa' => $op['tipo_tasa'] ?? null,
+                        'tasa' => $op['tasa'] ?? null,
+                        'titulo_deuda' => $op['titulo_deuda'] ?? false,
+                        'codigo_titulo' => $op['codigo_titulo'] ?? null,
+                    ];
+                } else {
+                    // Compras, Ventas y Canjes tienen estructura común
+                    $operationData = [
+                        'tipo_operacion' => $op['tipo_operacion'],
+                        'tipo_especie' => $op['tipo_especie'] ?? null,
+                        'codigo_especie' => $op['codigo_especie'] ?? null,
+                        'cant_especies' => $op['cant_especies'] ?? null,
+                        'codigo_afectacion' => $op['codigo_afectacion'] ?? null,
+                        'tipo_valuacion' => $op['tipo_valuacion'] ?? null,
+                        'fecha_movimiento' => $this->formatDateForDatabase($op['fecha_movimiento'] ?? null),
+                        'fecha_liquidacion' => $this->formatDateForDatabase($op['fecha_liquidacion'] ?? null),
+                    ];
 
-                } elseif ($op['tipo_operacion'] === 'V') {
-                    $operationData['precio_venta'] = $op['precio_venta'] ?? null;
-                    $operationData['fecha_pase_vt'] = $this->formatDateForDatabase($op['fecha_pase_vt'] ?? null);
-                    $operationData['precio_pase_vt'] = $op['precio_pase_vt'] ?? null;
+                    // Agregar campos específicos según el tipo de operación
+                    if ($op['tipo_operacion'] === 'C') {
+                        $operationData['precio_compra'] = $op['precio_compra'] ?? null;
+
+                        // Log para debuggear
+                        \Log::info('Guardando operación de compra', [
+                            'tipo_operacion' => $op['tipo_operacion'],
+                            'precio_compra_original' => $op['precio_compra'] ?? 'NULL',
+                            'precio_compra_final' => $operationData['precio_compra'],
+                            'operation_data' => $operationData
+                        ]);
+
+                    } elseif ($op['tipo_operacion'] === 'V') {
+                        $operationData['precio_venta'] = $op['precio_venta'] ?? null;
+                        $operationData['fecha_pase_vt'] = $this->formatDateForDatabase($op['fecha_pase_vt'] ?? null);
+                        $operationData['precio_pase_vt'] = $op['precio_pase_vt'] ?? null;
+                    }
                 }
 
                 $presentation->weeklyOperations()->create($operationData);

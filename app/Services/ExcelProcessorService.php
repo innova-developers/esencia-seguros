@@ -32,11 +32,12 @@ class ExcelProcessorService
         
         $operations = collect();
         
-        // Procesar cada hoja (VENTAS, COMPRAS, CANJES)
+        // Procesar cada hoja (VENTAS, COMPRAS, CANJES, PLAZOS FIJOS)
         $sheets = [
             'VENTAS' => 'V',
             'COMPRAS' => 'C', 
-            'CANJES' => 'J'
+            'CANJES' => 'J',
+            'PLAZOS FIJOS' => 'P'
         ];
         
         $processedSheets = [];
@@ -44,7 +45,14 @@ class ExcelProcessorService
         foreach ($sheets as $sheetName => $operationType) {
             if ($spreadsheet->sheetNameExists($sheetName)) {
                 $worksheet = $spreadsheet->getSheetByName($sheetName);
-                $sheetOperations = $this->processSheet($worksheet, $operationType);
+                
+                // Procesar hoja de PLAZOS FIJOS con estructura diferente
+                if ($operationType === 'P') {
+                    $sheetOperations = $this->processPlazosFijosSheet($worksheet);
+                } else {
+                    $sheetOperations = $this->processSheet($worksheet, $operationType);
+                }
+                
                 $operations = $operations->merge($sheetOperations);
                 $processedSheets[] = $sheetName;
             }
@@ -52,7 +60,7 @@ class ExcelProcessorService
         
         // Verificar que al menos una hoja fue procesada
         if (empty($processedSheets)) {
-            throw new \Exception("No se encontraron hojas válidas (VENTAS, COMPRAS, CANJES) en el archivo Excel");
+            throw new \Exception("No se encontraron hojas válidas (VENTAS, COMPRAS, CANJES, PLAZOS FIJOS) en el archivo Excel");
         }
         
         return [
@@ -87,14 +95,59 @@ class ExcelProcessorService
         
         $stocks = collect();
         
-        // Procesar la primera hoja (asumiendo que es la única hoja con datos)
+        // Log de todas las hojas disponibles para debugging
+        $allSheetNames = $spreadsheet->getSheetNames();
+        \Log::info('Hojas disponibles en el Excel mensual', [
+            'sheets' => $allSheetNames,
+            'total_sheets' => count($allSheetNames)
+        ]);
+        
+        // Procesar la hoja principal (inversiones)
         $worksheet = $spreadsheet->getActiveSheet();
+        $activeSheetName = $worksheet->getTitle();
+        \Log::info('Procesando hoja activa', ['sheet_name' => $activeSheetName]);
         $sheetStocks = $this->processMonthlySheet($worksheet);
+        \Log::info('Stocks procesados de hoja principal', ['count' => $sheetStocks->count()]);
         $stocks = $stocks->merge($sheetStocks);
+        
+        // Procesar la hoja de plazos fijos si existe (buscar con diferentes variaciones de nombre)
+        $plazosFijosSheetName = null;
+        foreach ($allSheetNames as $sheetName) {
+            $normalizedSheetName = strtolower(trim($sheetName));
+            // Buscar variaciones: "plazos fijos", "plazo fijo", "plazosfijos", etc.
+            if (preg_match('/plazo.*fijo/i', $normalizedSheetName)) {
+                $plazosFijosSheetName = $sheetName;
+                \Log::info('Hoja de plazos fijos encontrada', [
+                    'original_name' => $sheetName,
+                    'normalized' => $normalizedSheetName
+                ]);
+                break;
+            }
+        }
+        
+        if ($plazosFijosSheetName) {
+            try {
+                $plazosFijosWorksheet = $spreadsheet->getSheetByName($plazosFijosSheetName);
+                \Log::info('Procesando hoja de plazos fijos', ['sheet_name' => $plazosFijosSheetName]);
+                $plazosFijosStocks = $this->processMonthlyPlazosFijosSheet($plazosFijosWorksheet);
+                \Log::info('Plazos fijos procesados', ['count' => $plazosFijosStocks->count()]);
+                $stocks = $stocks->merge($plazosFijosStocks);
+            } catch (\Exception $e) {
+                \Log::error('Error al procesar hoja de plazos fijos', [
+                    'sheet_name' => $plazosFijosSheetName,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+            }
+        } else {
+            \Log::warning('No se encontró hoja de plazos fijos', [
+                'available_sheets' => $allSheetNames
+            ]);
+        }
         
         // Verificar que se procesaron datos
         if ($stocks->isEmpty()) {
-            throw new \Exception("No se encontraron datos válidos en el archivo Excel. Los datos deben comenzar en la fila 29.");
+            throw new \Exception("No se encontraron datos válidos en el archivo Excel.");
         }
         
         return [
@@ -128,6 +181,104 @@ class ExcelProcessorService
     }
     
     /**
+     * Procesar hoja de PLAZOS FIJOS con estructura especial
+     * FILA 1: VACIA
+     * FILA 2: ENCABEZADO DE TABLA
+     * FILA 3: NÚMEROS DEL 1 AL 13 (índices de columnas)
+     * FILA 4: ENCABEZADO CON LOS 13 CAMPOS
+     * FILA 5 EN ADELANTE: VALORES
+     */
+    private function processPlazosFijosSheet(Worksheet $worksheet): Collection
+    {
+        $operations = collect();
+        
+        // Los datos empiezan en la fila 5 (índice 4) - saltando filas 1-4
+        $startRow = 5;
+        $maxRow = $worksheet->getHighestRow();
+        
+        for ($row = $startRow; $row <= $maxRow; $row++) {
+            $operation = $this->extractPlazoFijoFromRow($worksheet, $row);
+            
+            if ($operation && $this->isValidPlazoFijo($operation)) {
+                $operations->push($operation);
+            }
+        }
+        
+        return $operations;
+    }
+    
+    /**
+     * Extraer datos de un plazo fijo desde una fila específica
+     * Campos: Código SSN tipo PF, BIC, CDF, Fecha constituc, Fecha vencimiento,
+     * Código SSN Moneda Origen, Valor Nominal Moneda Origen, Valor Nominal Moneda Nacional,
+     * Código SSN Afect, Tipo de Tasa, Tasa, Concretado con Tít Deuda Públ, Cód SSN TÍT Públ
+     */
+    private function extractPlazoFijoFromRow(Worksheet $worksheet, int $row): ?array
+    {
+        // Mapeo de columnas según los índices de la fila 3 (1-13)
+        $tipoPf = $this->cleanValue($worksheet->getCell('A' . $row)->getValue());
+        $bic = $this->cleanValue($worksheet->getCell('B' . $row)->getValue());
+        $cdf = $this->cleanValue($worksheet->getCell('C' . $row)->getValue());
+        $fechaConstitucion = $this->cleanValue($this->getCellValueAsString($worksheet, 'D' . $row));
+        $fechaVencimiento = $this->cleanValue($this->getCellValueAsString($worksheet, 'E' . $row));
+        $moneda = $this->cleanValue($worksheet->getCell('F' . $row)->getValue());
+        $valorNominalOrigen = $this->cleanValue($worksheet->getCell('G' . $row)->getValue());
+        $valorNominalNacional = $this->cleanValue($worksheet->getCell('H' . $row)->getValue());
+        $codigoAfectacion = $this->cleanValue($worksheet->getCell('I' . $row)->getValue());
+        $tipoTasa = $this->cleanValue($worksheet->getCell('J' . $row)->getValue());
+        $tasa = $this->cleanValue($worksheet->getCell('K' . $row)->getValue());
+        $tituloDeuda = $this->cleanValue($worksheet->getCell('L' . $row)->getValue());
+        $codigoTitulo = $this->cleanValue($worksheet->getCell('M' . $row)->getValue());
+        
+        // Verificar si la fila tiene datos válidos
+        if (empty($tipoPf) && empty($bic) && empty($cdf)) {
+            return null;
+        }
+        
+        // Convertir fechas de DD/MM/YYYY a YYYY-MM-DD
+        $fechaConstitucion = $this->convertDate($fechaConstitucion);
+        $fechaVencimiento = $this->convertDate($fechaVencimiento);
+        
+        // Convertir título deuda a booleano
+        $tituloDeudaBool = $this->convertToBoolean($tituloDeuda);
+        
+        return [
+            'tipo_operacion' => 'P',
+            'tipo_pf' => $tipoPf,
+            'bic' => $bic,
+            'cdf' => $cdf,
+            'fecha_constitucion' => $fechaConstitucion,
+            'fecha_vencimiento' => $fechaVencimiento,
+            'moneda' => $moneda,
+            'valor_nominal_origen' => $valorNominalOrigen,
+            'valor_nominal_nacional' => $valorNominalNacional,
+            'codigo_afectacion' => $codigoAfectacion,
+            'tipo_tasa' => $tipoTasa,
+            'tasa' => $tasa,
+            'titulo_deuda' => $tituloDeudaBool,
+            'codigo_titulo' => $codigoTitulo,
+            'row_number' => $row
+        ];
+    }
+    
+    /**
+     * Validar si un plazo fijo es válido
+     */
+    private function isValidPlazoFijo(array $plazoFijo): bool
+    {
+        // Campos obligatorios que deben tener valor
+        $requiredFields = ['tipo_pf', 'fecha_constitucion', 'fecha_vencimiento'];
+        
+        foreach ($requiredFields as $field) {
+            if (empty($plazoFijo[$field])) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
      * Procesar una hoja específica del Excel mensual
      */
     private function processMonthlySheet(Worksheet $worksheet): Collection
@@ -147,6 +298,175 @@ class ExcelProcessorService
         }
         
         return $stocks;
+    }
+    
+    /**
+     * Procesar hoja de PLAZOS FIJOS mensuales con estructura especial
+     * FILA 1: ÍNDICES DEL 1 AL 18
+     * FILA 2: ENCABEZADOS
+     * FILA 3 EN ADELANTE: VALORES
+     */
+    private function processMonthlyPlazosFijosSheet(Worksheet $worksheet): Collection
+    {
+        $stocks = collect();
+        
+        // Los datos empiezan en la fila 3 (índice 2) - saltando filas 1-2
+        $startRow = 3;
+        $maxRow = $worksheet->getHighestRow();
+        
+        \Log::info('Procesando hoja de plazos fijos', [
+            'start_row' => $startRow,
+            'max_row' => $maxRow,
+            'sheet_name' => $worksheet->getTitle()
+        ]);
+        
+        $processedCount = 0;
+        $validCount = 0;
+        $invalidCount = 0;
+        
+        for ($row = $startRow; $row <= $maxRow; $row++) {
+            $stock = $this->extractMonthlyPlazoFijoFromRow($worksheet, $row);
+            $processedCount++;
+            
+            if ($stock) {
+                if ($this->isValidMonthlyPlazoFijo($stock)) {
+                    $stocks->push($stock);
+                    $validCount++;
+                } else {
+                    $invalidCount++;
+                    \Log::debug('Plazo fijo inválido en fila', [
+                        'row' => $row,
+                        'stock' => $stock
+                    ]);
+                }
+            }
+        }
+        
+        \Log::info('Procesamiento de plazos fijos completado', [
+            'total_rows_processed' => $processedCount,
+            'valid_stocks' => $validCount,
+            'invalid_stocks' => $invalidCount,
+            'total_stocks' => $stocks->count()
+        ]);
+        
+        return $stocks;
+    }
+    
+    /**
+     * Extraer datos de un plazo fijo mensual desde una fila específica
+     * Campos: Código SSN tipo PF, BIC, CDF, Fecha constituc, Fecha vencimiento,
+     * Código SSN Moneda Origen, Valor Nominal Moneda Origen, Valor Nominal Moneda Nacional,
+     * Ente Emisor de Gpo Econ, Libre Disponib, En custodia, Código SSN Afect,
+     * Tipo de Tasa, Tasa, Concretado con Tít Deuda Públ, Cód SSN TÍT Públ,
+     * Valor Contable, Financiera
+     */
+    private function extractMonthlyPlazoFijoFromRow(Worksheet $worksheet, int $row): ?array
+    {
+        // Mapeo de columnas según los índices de la fila 1 (1-18)
+        $tipoPf = $this->cleanValue($worksheet->getCell('A' . $row)->getValue());
+        $bic = $this->cleanValue($worksheet->getCell('B' . $row)->getValue());
+        $cdf = $this->cleanValue($worksheet->getCell('C' . $row)->getValue());
+        $fechaConstitucion = $this->cleanValue($this->getCellValueAsString($worksheet, 'D' . $row));
+        $fechaVencimiento = $this->cleanValue($this->getCellValueAsString($worksheet, 'E' . $row));
+        $moneda = $this->cleanValue($worksheet->getCell('F' . $row)->getValue());
+        $valorNominalOrigen = $this->cleanValue($worksheet->getCell('G' . $row)->getValue());
+        $valorNominalNacional = $this->cleanValue($worksheet->getCell('H' . $row)->getValue());
+        $emisorGrupoEconomico = $this->cleanValue($worksheet->getCell('I' . $row)->getValue());
+        $libreDisponibilidad = $this->cleanValue($worksheet->getCell('J' . $row)->getValue());
+        $enCustodia = $this->cleanValue($worksheet->getCell('K' . $row)->getValue());
+        $codigoAfectacion = $this->cleanValue($worksheet->getCell('L' . $row)->getValue());
+        $tipoTasa = $this->cleanValue($worksheet->getCell('M' . $row)->getValue());
+        $tasa = $this->cleanValue($worksheet->getCell('N' . $row)->getValue());
+        $tituloDeuda = $this->cleanValue($worksheet->getCell('O' . $row)->getValue());
+        $codigoTitulo = $this->cleanValue($worksheet->getCell('P' . $row)->getValue());
+        $valorContable = $this->cleanValue($worksheet->getCell('Q' . $row)->getValue());
+        $financiera = $this->cleanValue($worksheet->getCell('R' . $row)->getValue());
+        
+        // Log de primera fila para debugging
+        if ($row === 3) {
+            \Log::info('Primera fila de plazos fijos', [
+                'row' => $row,
+                'tipo_pf' => $tipoPf,
+                'bic' => $bic,
+                'cdf' => $cdf,
+                'fecha_constitucion' => $fechaConstitucion,
+                'fecha_vencimiento' => $fechaVencimiento
+            ]);
+        }
+        
+        // Verificar si la fila tiene datos válidos
+        if (empty($tipoPf) && empty($bic) && empty($cdf)) {
+            return null;
+        }
+        
+        // Convertir fechas directamente a formato DDMMYYYY para la base de datos
+        $fechaConstitucion = $this->convertDateToDDMMYYYY($fechaConstitucion);
+        $fechaVencimiento = $this->convertDateToDDMMYYYY($fechaVencimiento);
+        
+        // Log después de conversión para debugging
+        if ($row === 3) {
+            \Log::info('Fechas después de conversión', [
+                'row' => $row,
+                'fecha_constitucion_original' => $this->cleanValue($this->getCellValueAsString($worksheet, 'D' . $row)),
+                'fecha_constitucion_convertida' => $fechaConstitucion,
+                'fecha_vencimiento_original' => $this->cleanValue($this->getCellValueAsString($worksheet, 'E' . $row)),
+                'fecha_vencimiento_convertida' => $fechaVencimiento
+            ]);
+        }
+        
+        // Convertir valores booleanos
+        $emisorGrupoEconomicoBool = $this->convertToBoolean($emisorGrupoEconomico);
+        $libreDisponibilidadBool = $this->convertToBoolean($libreDisponibilidad);
+        $enCustodiaBool = $this->convertToBoolean($enCustodia);
+        $tituloDeudaBool = $this->convertToBoolean($tituloDeuda);
+        $financieraBool = $this->convertToBoolean($financiera);
+        
+        // Generar nombre por defecto para plazos fijos (no viene en el Excel)
+        $nombre = "PF {$tipoPf}";
+        if ($cdf) {
+            $nombre .= " - {$cdf}";
+        }
+        
+        return [
+            'nombre' => $nombre,
+            'tipo' => 'P',
+            'tipo_pf' => $tipoPf,
+            'bic' => $bic,
+            'cdf' => $cdf,
+            'fecha_constitucion' => $fechaConstitucion,
+            'fecha_vencimiento_pf' => $fechaVencimiento,
+            'moneda' => $moneda,
+            'valor_nominal_origen' => $valorNominalOrigen,
+            'valor_nominal_nacional' => $valorNominalNacional,
+            'emisor_grupo_economico' => $emisorGrupoEconomicoBool,
+            'libre_disponibilidad' => $libreDisponibilidadBool,
+            'en_custodia' => $enCustodiaBool,
+            'codigo_afectacion' => $codigoAfectacion,
+            'tipo_tasa' => $tipoTasa,
+            'tasa' => $tasa,
+            'titulo_deuda' => $tituloDeudaBool,
+            'codigo_titulo' => $codigoTitulo,
+            'valor_contable' => $valorContable,
+            'financiera' => $financieraBool,
+            'row_number' => $row
+        ];
+    }
+    
+    /**
+     * Validar si un plazo fijo mensual es válido
+     */
+    private function isValidMonthlyPlazoFijo(array $plazoFijo): bool
+    {
+        // Campos obligatorios que deben tener valor
+        $requiredFields = ['tipo_pf', 'fecha_constitucion', 'fecha_vencimiento_pf'];
+        
+        foreach ($requiredFields as $field) {
+            if (empty($plazoFijo[$field])) {
+                return false;
+            }
+        }
+        
+        return true;
     }
     
     /**
@@ -550,6 +870,7 @@ class ExcelProcessorService
                 'compras' => $operations->where('tipo_operacion', 'C')->count(),
                 'ventas' => $operations->where('tipo_operacion', 'V')->count(),
                 'canjes' => $operations->where('tipo_operacion', 'J')->count(),
+                'plazos_fijos' => $operations->where('tipo_operacion', 'P')->count(),
             ],
             'por_especie' => $operations->groupBy('tipo_especie')->map->count()->toArray(),
             'por_valuacion' => $operations->groupBy('tipo_valuacion')->map->count()->toArray(),
@@ -603,6 +924,85 @@ class ExcelProcessorService
     }
 
     /**
+     * Convertir fecha a formato DDMMYYYY para la base de datos
+     */
+    private function convertDateToDDMMYYYY(?string $date): ?string
+    {
+        if (empty($date)) {
+            return null;
+        }
+        
+        // Limpiar el valor
+        $date = trim($date);
+        
+        try {
+            // Si ya está en formato DDMMYYYY, devolverlo tal como está
+            if (preg_match('/^\d{8}$/', $date)) {
+                return $date;
+            }
+            
+            // Si está en formato YYYY-MM-DD, convertirlo a DDMMYYYY
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+                $dateObj = \DateTime::createFromFormat('Y-m-d', $date);
+                if ($dateObj) {
+                    return $dateObj->format('dmY');
+                }
+            }
+            
+            // Si está en formato DD/MM/YYYY (con o sin ceros a la izquierda en día/mes)
+            // Ejemplos: "10/9/2023", "01/01/2023", "1/1/2023"
+            if (preg_match('/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/', $date, $matches)) {
+                $day = str_pad($matches[1], 2, '0', STR_PAD_LEFT);
+                $month = str_pad($matches[2], 2, '0', STR_PAD_LEFT);
+                $year = $matches[3];
+                return $day . $month . $year;
+            }
+            
+            // Intentar parsear con DateTime usando formato flexible
+            $formats = [
+                'd/m/Y',    // 10/09/2023
+                'j/n/Y',    // 10/9/2023 (sin ceros a la izquierda)
+                'd-m-Y',    // 10-09-2023
+                'Y-m-d',    // 2023-09-10
+            ];
+            
+            foreach ($formats as $format) {
+                $dateObj = \DateTime::createFromFormat($format, $date);
+                if ($dateObj) {
+                    return $dateObj->format('dmY');
+                }
+            }
+            
+            // Si es un número de Excel, convertirlo primero a YYYY-MM-DD y luego a DDMMYYYY
+            if (is_numeric($date)) {
+                try {
+                    $excelDate = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($date);
+                    $excelDate->setTimezone(new \DateTimeZone('UTC'));
+                    $excelDate->modify('+1 day');
+                    return $excelDate->format('dmY');
+                } catch (\Exception $e) {
+                    \Log::error("Error al convertir número Excel a DDMMYYYY: " . $e->getMessage(), [
+                        'date' => $date
+                    ]);
+                    return null;
+                }
+            }
+            
+            \Log::warning("No se pudo convertir fecha a DDMMYYYY", [
+                'date' => $date,
+                'type' => gettype($date)
+            ]);
+            return null;
+        } catch (\Exception $e) {
+            \Log::error("Error al convertir fecha a DDMMYYYY: " . $e->getMessage(), [
+                'date' => $date,
+                'error' => $e->getTraceAsString()
+            ]);
+            return null;
+        }
+    }
+    
+    /**
      * Formatear fecha para SSN (DDMMYYYY)
      */
     public function formatDateForSSN(?string $date): string
@@ -623,6 +1023,11 @@ class ExcelProcessorService
                 return $dateObj->format('dmY');
             }
             
+            // Si ya está en formato DDMMYYYY, devolverlo tal como está
+            if (preg_match('/^\d{8}$/', $date)) {
+                return $date;
+            }
+            
             // Si no se puede parsear, devolver string vacío
             return '';
         } catch (\Exception $e) {
@@ -639,57 +1044,88 @@ class ExcelProcessorService
         
         foreach ($stocks as $index => $stock) {
             try {
-                // Validar que el stock tenga los campos mínimos requeridos
-                if (!isset($stock['tipo']) || !isset($stock['tipo_especie']) || !isset($stock['codigo_especie'])) {
-                    \Log::warning("Stock {$index} no tiene campos mínimos requeridos", $stock);
-                    continue;
-                }
-                
-                // Verificar si debe incluir campos de Pase VT
-                $tipoEspecie = strtoupper(trim($stock['tipo_especie'] ?? ''));
-                $tipoValuacion = strtoupper(trim($stock['tipo_valuacion'] ?? ''));
-                $debeIncluirPaseVT = in_array($tipoEspecie, ['TP', 'ON']) && $tipoValuacion === 'T';
-
-                $ssnStock = [
-                    'tipo' => $stock['tipo'],
-                    'tipoEspecie' => $stock['tipo_especie'],
-                    'codigoEspecie' => $stock['codigo_especie'],
-                    'cantidadDevengadoEspecies' => (float) ($stock['cantidad_devengado_especies'] ?? 0),
-                    'cantidadPercibidoEspecies' => (float) ($stock['cantidad_percibido_especies'] ?? 0),
-                    'codigoAfectacion' => $stock['codigo_afectacion'] ?? '',
-                    'tipoValuacion' => $stock['tipo_valuacion'] ?? '',
-                    'conCotizacion' => $this->convertToSSNBoolean($stock['con_cotizacion'] ?? false),
-                    'libreDisponibilidad' => $this->convertToSSNBoolean($stock['libre_disponibilidad'] ?? false),
-                    'emisorGrupoEconomico' => $this->convertToSSNBoolean($stock['emisor_grupo_economico'] ?? false),
-                    'emisorArtRet' => $this->convertToSSNBoolean($stock['emisor_art_ret'] ?? false),
-                    'previsionDesvalorizacion' => $stock['prevision_desvalorizacion'] !== null && $stock['prevision_desvalorizacion'] !== '' ? (float) $stock['prevision_desvalorizacion'] : 0,
-                    'valorContable' => $stock['valor_contable'] !== null && $stock['valor_contable'] !== '' ? (float) $stock['valor_contable'] : 0,
-                    'enCustodia' => $this->convertToSSNBoolean($stock['en_custodia'] ?? false),
-                    'financiera' => $this->convertToSSNBoolean($stock['financiera'] ?? false),
-                    'valorFinanciero' => $stock['valor_financiero'] !== null && $stock['valor_financiero'] !== '' ? (float) $stock['valor_financiero'] : 0,
-                ];
-
-                // Agregar campos de Pase VT solo si corresponde
-                if ($debeIncluirPaseVT) {
-                    $ssnStock['fechaPaseVt'] = $this->formatDateForSSN($stock['fecha_pase_vt'] ?? '');
-                    $ssnStock['precioPaseVt'] = $stock['precio_pase_vt'] !== null && $stock['precio_pase_vt'] !== '' ? (float) $stock['precio_pase_vt'] : 0;
+                // Construir objeto según el tipo de stock
+                if ($stock['tipo'] === 'P') {
+                    // Plazos Fijos tienen estructura completamente diferente
+                    // Las fechas ya están en formato DDMMYYYY en la base de datos
+                    $fechaConstitucion = $stock['fecha_constitucion'] ?? '';
+                    $fechaVencimiento = $stock['fecha_vencimiento_pf'] ?? '';
+                    
+                    // Si no están en formato DDMMYYYY, convertirlas
+                    if ($fechaConstitucion && !preg_match('/^\d{8}$/', $fechaConstitucion)) {
+                        $fechaConstitucion = $this->formatDateForSSN($fechaConstitucion);
+                    }
+                    if ($fechaVencimiento && !preg_match('/^\d{8}$/', $fechaVencimiento)) {
+                        $fechaVencimiento = $this->formatDateForSSN($fechaVencimiento);
+                    }
+                    
+                    $ssnStock = [
+                        'tipo' => 'P',
+                        'tipoPF' => $stock['tipo_pf'] ?? '',
+                        'bic' => $stock['bic'] ?? '',
+                        'cdf' => $stock['cdf'] ?? '',
+                        'fechaConstitucion' => $fechaConstitucion,
+                        'fechaVencimiento' => $fechaVencimiento,
+                        'moneda' => $stock['moneda'] ?? '',
+                        'valorNominalOrigen' => isset($stock['valor_nominal_origen']) ? (float) $stock['valor_nominal_origen'] : 0,
+                        'valorNominalNacional' => isset($stock['valor_nominal_nacional']) ? (float) $stock['valor_nominal_nacional'] : 0,
+                        'emisorGrupoEconomico' => $this->convertToSSNBoolean($stock['emisor_grupo_economico'] ?? false),
+                        'libreDisponibilidad' => $this->convertToSSNBoolean($stock['libre_disponibilidad'] ?? false),
+                        'enCustodia' => $this->convertToSSNBoolean($stock['en_custodia'] ?? false),
+                        'codigoAfectacion' => $stock['codigo_afectacion'] ?? '',
+                        'tipoTasa' => $stock['tipo_tasa'] ?? '',
+                        'tasa' => isset($stock['tasa']) ? (float) $stock['tasa'] : 0,
+                        'tituloDeuda' => $this->convertToSSNBoolean($stock['titulo_deuda'] ?? false),
+                        'codigoTitulo' => $stock['codigo_titulo'] ?? '',
+                        'valorContable' => isset($stock['valor_contable']) ? (float) $stock['valor_contable'] : 0,
+                        'financiera' => $this->convertToSSNBoolean($stock['financiera'] ?? false),
+                    ];
                 } else {
-                    $ssnStock['fechaPaseVt'] = '';
-                    $ssnStock['precioPaseVt'] = '';
+                    // Inversiones y Cheques tienen estructura común
+                    // Validar que el stock tenga los campos mínimos requeridos
+                    if (!isset($stock['tipo']) || !isset($stock['tipo_especie']) || !isset($stock['codigo_especie'])) {
+                        \Log::warning("Stock {$index} no tiene campos mínimos requeridos", $stock);
+                        continue;
+                    }
+                    
+                    // Verificar si debe incluir campos de Pase VT
+                    $tipoEspecie = strtoupper(trim($stock['tipo_especie'] ?? ''));
+                    $tipoValuacion = strtoupper(trim($stock['tipo_valuacion'] ?? ''));
+                    $debeIncluirPaseVT = in_array($tipoEspecie, ['TP', 'ON']) && $tipoValuacion === 'T';
+
+                    $ssnStock = [
+                        'tipo' => $stock['tipo'],
+                        'tipoEspecie' => $stock['tipo_especie'],
+                        'codigoEspecie' => $stock['codigo_especie'],
+                        'cantidadDevengadoEspecies' => (float) ($stock['cantidad_devengado_especies'] ?? 0),
+                        'cantidadPercibidoEspecies' => (float) ($stock['cantidad_percibido_especies'] ?? 0),
+                        'codigoAfectacion' => $stock['codigo_afectacion'] ?? '',
+                        'tipoValuacion' => $stock['tipo_valuacion'] ?? '',
+                        'conCotizacion' => $this->convertToSSNBoolean($stock['con_cotizacion'] ?? false),
+                        'libreDisponibilidad' => $this->convertToSSNBoolean($stock['libre_disponibilidad'] ?? false),
+                        'emisorGrupoEconomico' => $this->convertToSSNBoolean($stock['emisor_grupo_economico'] ?? false),
+                        'emisorArtRet' => $this->convertToSSNBoolean($stock['emisor_art_ret'] ?? false),
+                        'previsionDesvalorizacion' => $stock['prevision_desvalorizacion'] !== null && $stock['prevision_desvalorizacion'] !== '' ? (float) $stock['prevision_desvalorizacion'] : 0,
+                        'valorContable' => $stock['valor_contable'] !== null && $stock['valor_contable'] !== '' ? (float) $stock['valor_contable'] : 0,
+                        'enCustodia' => $this->convertToSSNBoolean($stock['en_custodia'] ?? false),
+                        'financiera' => $this->convertToSSNBoolean($stock['financiera'] ?? false),
+                        'valorFinanciero' => $stock['valor_financiero'] !== null && $stock['valor_financiero'] !== '' ? (float) $stock['valor_financiero'] : 0,
+                    ];
+
+                    // Agregar campos de Pase VT solo si corresponde
+                    if ($debeIncluirPaseVT) {
+                        $ssnStock['fechaPaseVt'] = $this->formatDateForSSN($stock['fecha_pase_vt'] ?? '');
+                        $ssnStock['precioPaseVt'] = $stock['precio_pase_vt'] !== null && $stock['precio_pase_vt'] !== '' ? (float) $stock['precio_pase_vt'] : 0;
+                    } else {
+                        $ssnStock['fechaPaseVt'] = '';
+                        $ssnStock['precioPaseVt'] = '';
+                    }
                 }
                 
                 // Log para debugging
                 \Log::info('Stock procesado para SSN', [
                     'stock_index' => $index,
-                    'tipo_especie' => $tipoEspecie,
-                    'tipo_valuacion' => $tipoValuacion,
-                    'debe_incluir_pase_vt' => $debeIncluirPaseVT,
-                    'con_cotizacion' => $ssnStock['conCotizacion'],
-                    'libre_disponibilidad' => $ssnStock['libreDisponibilidad'],
-                    'emisor_grupo_economico' => $ssnStock['emisorGrupoEconomico'],
-                    'emisor_art_ret' => $ssnStock['emisorArtRet'],
-                    'en_custodia' => $ssnStock['enCustodia'],
-                    'financiera' => $ssnStock['financiera'],
+                    'tipo' => $stock['tipo'] ?? 'unknown',
                 ]);
                 
                 $ssnStocks[] = $ssnStock;
@@ -721,54 +1157,76 @@ class ExcelProcessorService
         $ssnOperations = [];
         
         foreach ($operations as $operation) {
-            $ssnOperation = [
-                'tipoOperacion' => $operation['tipo_operacion'],
-                'tipoEspecie' => $operation['tipo_especie'],
-                'codigoEspecie' => $operation['codigo_especie'],
-                'cantEspecies' => (float) $operation['cant_especies'],
-                'codigoAfectacion' => $operation['codigo_afectacion'],
-                'tipoValuacion' => $operation['tipo_valuacion'],
-                'fechaMovimiento' => $this->formatDateForSSN($operation['fecha_movimiento']),
-                'fechaLiquidacion' => $this->formatDateForSSN($operation['fecha_liquidacion']),
-            ];
-            
-            // Agregar campos específicos según el tipo de operación
-            if ($operation['tipo_operacion'] === 'C') {
-                $ssnOperation['precioCompra'] = isset($operation['precio_compra']) ? (float) $operation['precio_compra'] : 0;
-            } elseif ($operation['tipo_operacion'] === 'V') {
-                $ssnOperation['precioVenta'] = isset($operation['precio_venta']) ? (float) $operation['precio_venta'] : 0;
+            // Construir objeto base según el tipo de operación
+            if ($operation['tipo_operacion'] === 'P') {
+                // Plazos Fijos tienen estructura completamente diferente
+                $ssnOperation = [
+                    'tipoOperacion' => $operation['tipo_operacion'],
+                    'tipoPF' => $operation['tipo_pf'] ?? '',
+                    'bic' => $operation['bic'] ?? '',
+                    'cdf' => $operation['cdf'] ?? '',
+                    'fechaConstitucion' => $this->formatDateForSSN($operation['fecha_constitucion'] ?? ''),
+                    'fechaVencimiento' => $this->formatDateForSSN($operation['fecha_vencimiento'] ?? ''),
+                    'moneda' => $operation['moneda'] ?? '',
+                    'valorNominalOrigen' => isset($operation['valor_nominal_origen']) ? (float) $operation['valor_nominal_origen'] : 0,
+                    'valorNominalNacional' => isset($operation['valor_nominal_nacional']) ? (float) $operation['valor_nominal_nacional'] : 0,
+                    'codigoAfectacion' => $operation['codigo_afectacion'] ?? '',
+                    'tipoTasa' => $operation['tipo_tasa'] ?? '',
+                    'tasa' => isset($operation['tasa']) ? (float) $operation['tasa'] : 0,
+                    'tituloDeuda' => isset($operation['titulo_deuda']) && $operation['titulo_deuda'] ? '1' : '0',
+                    'codigoTitulo' => $operation['codigo_titulo'] ?? '',
+                ];
+            } else {
+                // Compras, Ventas y Canjes tienen estructura común
+                $ssnOperation = [
+                    'tipoOperacion' => $operation['tipo_operacion'],
+                    'tipoEspecie' => $operation['tipo_especie'] ?? '',
+                    'codigoEspecie' => $operation['codigo_especie'] ?? '',
+                    'cantEspecies' => isset($operation['cant_especies']) ? (float) $operation['cant_especies'] : 0,
+                    'codigoAfectacion' => $operation['codigo_afectacion'] ?? '',
+                    'tipoValuacion' => $operation['tipo_valuacion'] ?? '',
+                    'fechaMovimiento' => $this->formatDateForSSN($operation['fecha_movimiento'] ?? ''),
+                    'fechaLiquidacion' => $this->formatDateForSSN($operation['fecha_liquidacion'] ?? ''),
+                ];
+                
+                // Agregar campos específicos según el tipo de operación
+                if ($operation['tipo_operacion'] === 'C') {
+                    $ssnOperation['precioCompra'] = isset($operation['precio_compra']) ? (float) $operation['precio_compra'] : 0;
+                } elseif ($operation['tipo_operacion'] === 'V') {
+                    $ssnOperation['precioVenta'] = isset($operation['precio_venta']) ? (float) $operation['precio_venta'] : 0;
 
-                // Normalizar valores
-                $tipoEspecie = strtoupper(trim($operation['tipo_especie'] ?? ''));
-                $tipoValuacion = strtoupper(trim($operation['tipo_valuacion'] ?? ''));
-                $debeIncluirPaseVT = in_array($tipoEspecie, ['TP', 'ON']) && $tipoValuacion === 'T';
+                    // Normalizar valores
+                    $tipoEspecie = strtoupper(trim($operation['tipo_especie'] ?? ''));
+                    $tipoValuacion = strtoupper(trim($operation['tipo_valuacion'] ?? ''));
+                    $debeIncluirPaseVT = in_array($tipoEspecie, ['TP', 'ON']) && $tipoValuacion === 'T';
 
-                // Log para debuggear
-                \Log::info('Procesando operación de venta para SSN', [
-                    'tipo_especie' => $tipoEspecie,
-                    'tipo_valuacion' => $tipoValuacion,
-                    'debe_incluir_pase_vt' => $debeIncluirPaseVT,
-                    'operation_id' => $operation['id'] ?? 'unknown'
-                ]);
-
-                // Siempre incluir los campos, pero con valores apropiados según las condiciones
-                if ($debeIncluirPaseVT) {
-                    $fechaPaseVT = $this->formatDateForSSN($operation['fecha_pase_vt']);
-                    $ssnOperation['fechaPaseVT'] = $fechaPaseVT;
-                    $ssnOperation['precioPaseVT'] = isset($operation['precio_pase_vt']) && $operation['precio_pase_vt'] !== null && $operation['precio_pase_vt'] !== "" ? (float) $operation['precio_pase_vt'] : "";
-                    
-                    \Log::info('Incluyendo campos PaseVT con valores', [
-                        'fechaPaseVT' => $ssnOperation['fechaPaseVT'],
-                        'precioPaseVT' => $ssnOperation['precioPaseVT']
+                    // Log para debuggear
+                    \Log::info('Procesando operación de venta para SSN', [
+                        'tipo_especie' => $tipoEspecie,
+                        'tipo_valuacion' => $tipoValuacion,
+                        'debe_incluir_pase_vt' => $debeIncluirPaseVT,
+                        'operation_id' => $operation['id'] ?? 'unknown'
                     ]);
-                } else {
-                    // Incluir campos con string vacío cuando no corresponda
-                    $ssnOperation['fechaPaseVT'] = "";
-                    $ssnOperation['precioPaseVT'] = "";
-                    
-                    \Log::info('Incluyendo campos PaseVT vacíos', [
-                        'razon' => 'No cumple condiciones (TP/ON y T)'
-                    ]);
+
+                    // Siempre incluir los campos, pero con valores apropiados según las condiciones
+                    if ($debeIncluirPaseVT) {
+                        $fechaPaseVT = $this->formatDateForSSN($operation['fecha_pase_vt'] ?? '');
+                        $ssnOperation['fechaPaseVT'] = $fechaPaseVT;
+                        $ssnOperation['precioPaseVT'] = isset($operation['precio_pase_vt']) && $operation['precio_pase_vt'] !== null && $operation['precio_pase_vt'] !== "" ? (float) $operation['precio_pase_vt'] : "";
+                        
+                        \Log::info('Incluyendo campos PaseVT con valores', [
+                            'fechaPaseVT' => $ssnOperation['fechaPaseVT'],
+                            'precioPaseVT' => $ssnOperation['precioPaseVT']
+                        ]);
+                    } else {
+                        // Incluir campos con string vacío cuando no corresponda
+                        $ssnOperation['fechaPaseVT'] = "";
+                        $ssnOperation['precioPaseVT'] = "";
+                        
+                        \Log::info('Incluyendo campos PaseVT vacíos', [
+                            'razon' => 'No cumple condiciones (TP/ON y T)'
+                        ]);
+                    }
                 }
             }
             

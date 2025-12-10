@@ -227,6 +227,22 @@ class WeeklyOperation extends Model
     }
 
     /**
+     * Obtener fecha de constitución formateada para mostrar (Plazos Fijos)
+     */
+    public function getFechaConstitucionDisplayAttribute(): ?string
+    {
+        return $this->formatDateForDisplay($this->fecha_constitucion);
+    }
+
+    /**
+     * Obtener fecha de vencimiento formateada para mostrar (Plazos Fijos)
+     */
+    public function getFechaVencimientoDisplayAttribute(): ?string
+    {
+        return $this->formatDateForDisplay($this->fecha_vencimiento);
+    }
+
+    /**
      * Obtener el JSON para enviar a SSN
      */
     public function getSsnJson(): array

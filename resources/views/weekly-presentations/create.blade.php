@@ -126,17 +126,17 @@
                                 <thead class="table-dark">
                                     <tr>
                                         <th>Tipo Oper.</th>
-                                        <th>Tipo Especie</th>
-                                        <th>Código SSN</th>
-                                        <th>Cant. Especies</th>
+                                        <th>Tipo Especie/PF</th>
+                                        <th>Código SSN/BIC</th>
+                                        <th>Cant. Especies/CDF</th>
                                         <th>Código Afect.</th>
-                                        <th>Tipo Valuac.</th>
-                                        <th>Fecha Movim.</th>
-                                        <th>Precio Compra</th>
-                                        <th>Fecha Liquidac.</th>
-                                        <th>Precio Venta</th>
-                                        <th>Fecha Pase VT</th>
-                                        <th>Precio Pase VT</th>
+                                        <th>Tipo Valuac./Moneda</th>
+                                        <th>Fecha Movim./Const.</th>
+                                        <th>Precio Compra/Val. Orig.</th>
+                                        <th>Fecha Liquidac./Venc.</th>
+                                        <th>Precio Venta/Val. Nac.</th>
+                                        <th>Fecha Pase VT/Tipo Tasa</th>
+                                        <th>Precio Pase VT/Tasa</th>
                                     </tr>
                                 </thead>
                                 <tbody id="previewTableBody">
@@ -522,6 +522,7 @@
                 <div>Compras: <strong>${data.summary.por_tipo.compras}</strong></div>
                 <div>Ventas: <strong>${data.summary.por_tipo.ventas}</strong></div>
                 <div>Canjes: <strong>${data.summary.por_tipo.canjes}</strong></div>
+                <div>Plazos Fijos: <strong>${data.summary.por_tipo.plazos_fijos || 0}</strong></div>
             `;
 
             // Limpiar tabla
@@ -543,22 +544,46 @@
                     precioVentaField = operation.precio_venta ? parseFloat(operation.precio_venta).toFixed(4) : '-';
                     fechaPaseField = formatDate(operation.fecha_pase_vt);
                     precioPaseField = operation.precio_pase_vt ? parseFloat(operation.precio_pase_vt).toFixed(4) : '-';
+                } else if (operation.tipo_operacion === 'P') {
+                    // Para plazos fijos, mostrar información específica en campos alternativos
+                    precioCompraField = operation.tipo_pf || '-';
+                    precioVentaField = operation.bic || '-';
+                    fechaPaseField = formatDate(operation.fecha_constitucion);
+                    precioPaseField = formatDate(operation.fecha_vencimiento);
                 }
                 
-                row.innerHTML = `
-                    <td><span class="badge bg-${getOperationBadgeColor(operation.tipo_operacion)}">${getOperationLabel(operation.tipo_operacion)}</span></td>
-                    <td>${operation.tipo_especie || '-'}</td>
-                    <td><code>${operation.codigo_especie || '-'}</code></td>
-                    <td>${operation.cant_especies ? parseFloat(operation.cant_especies).toLocaleString() : '-'}</td>
-                    <td>${operation.codigo_afectacion || '-'}</td>
-                    <td>${operation.tipo_valuacion || '-'}</td>
-                    <td>${formatDate(operation.fecha_movimiento)}</td>
-                    <td>${precioCompraField}</td>
-                    <td>${formatDate(operation.fecha_liquidacion)}</td>
-                    <td>${precioVentaField}</td>
-                    <td>${fechaPaseField}</td>
-                    <td>${precioPaseField}</td>
-                `;
+                // Para plazos fijos, mostrar campos específicos
+                if (operation.tipo_operacion === 'P') {
+                    row.innerHTML = `
+                        <td><span class="badge bg-${getOperationBadgeColor(operation.tipo_operacion)}">${getOperationLabel(operation.tipo_operacion)}</span></td>
+                        <td>${operation.tipo_pf || '-'}</td>
+                        <td><code>${operation.bic || '-'}</code></td>
+                        <td>${operation.cdf || '-'}</td>
+                        <td>${operation.codigo_afectacion || '-'}</td>
+                        <td>${operation.moneda || '-'}</td>
+                        <td>${formatDate(operation.fecha_constitucion)}</td>
+                        <td>${operation.valor_nominal_origen ? parseFloat(operation.valor_nominal_origen).toLocaleString() : '-'}</td>
+                        <td>${formatDate(operation.fecha_vencimiento)}</td>
+                        <td>${operation.valor_nominal_nacional ? parseFloat(operation.valor_nominal_nacional).toLocaleString() : '-'}</td>
+                        <td>${operation.tipo_tasa || '-'}</td>
+                        <td>${operation.tasa ? parseFloat(operation.tasa).toFixed(3) : '-'}</td>
+                    `;
+                } else {
+                    row.innerHTML = `
+                        <td><span class="badge bg-${getOperationBadgeColor(operation.tipo_operacion)}">${getOperationLabel(operation.tipo_operacion)}</span></td>
+                        <td>${operation.tipo_especie || '-'}</td>
+                        <td><code>${operation.codigo_especie || '-'}</code></td>
+                        <td>${operation.cant_especies ? parseFloat(operation.cant_especies).toLocaleString() : '-'}</td>
+                        <td>${operation.codigo_afectacion || '-'}</td>
+                        <td>${operation.tipo_valuacion || '-'}</td>
+                        <td>${formatDate(operation.fecha_movimiento)}</td>
+                        <td>${precioCompraField}</td>
+                        <td>${formatDate(operation.fecha_liquidacion)}</td>
+                        <td>${precioVentaField}</td>
+                        <td>${fechaPaseField}</td>
+                        <td>${precioPaseField}</td>
+                    `;
+                }
                 tableBody.appendChild(row);
             });
 
@@ -616,6 +641,7 @@
                 case 'C': return 'success';
                 case 'V': return 'danger';
                 case 'J': return 'warning';
+                case 'P': return 'info';
                 default: return 'secondary';
             }
         }
@@ -625,6 +651,7 @@
                 case 'C': return 'COMPRA';
                 case 'V': return 'VENTA';
                 case 'J': return 'CANJE';
+                case 'P': return 'PLAZO FIJO';
                 default: return tipo;
             }
         }

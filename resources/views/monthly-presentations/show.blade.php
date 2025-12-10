@@ -105,17 +105,15 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach($presentation->monthlyStocks as $stock)
+                            @foreach($presentation->monthlyStocks->where('tipo', '!=', 'P') as $stock)
                             @php
                                 $badge = match($stock->tipo) {
                                     'I' => 'primary',
-                                    'P' => 'success',
                                     'C' => 'warning',
                                     default => 'secondary',
                                 };
                                 $label = match($stock->tipo) {
                                     'I' => 'INVERSIONES',
-                                    'P' => 'PLAZO FIJO',
                                     'C' => 'CHEQUE PAGO DIF.',
                                     default => $stock->tipo,
                                 };
@@ -185,6 +183,89 @@
                         Desliza horizontalmente para ver más columnas
                     </div>
                 </div>
+
+                @if($presentation->monthlyStocks->where('tipo', 'P')->count() > 0)
+                <h5 class="mt-5 mb-3"><i class="fas fa-piggy-bank me-2"></i>Plazos Fijos</h5>
+                <div class="table-responsive" style="overflow-x: auto;">
+                    <div class="table-container">
+                        <table class="table table-striped table-hover" id="tabla-plazos-fijos">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Tipo PF</th>
+                                <th>BIC</th>
+                                <th>CDF</th>
+                                <th>Fecha Constitución</th>
+                                <th>Fecha Vencimiento</th>
+                                <th>Moneda</th>
+                                <th>Valor Nominal Origen</th>
+                                <th>Valor Nominal Nacional</th>
+                                <th>Código Afectación</th>
+                                <th>Tipo Tasa</th>
+                                <th>Tasa</th>
+                                <th>Título Deuda</th>
+                                <th>Código Título</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($presentation->monthlyStocks->where('tipo', 'P') as $pf)
+                            <tr>
+                                <td>{{ $pf->nombre ?? '' }}</td>
+                                <td><code>{{ $pf->tipo_pf ?? '' }}</code></td>
+                                <td><code>{{ $pf->bic ?? '' }}</code></td>
+                                <td><code>{{ $pf->cdf ?? '' }}</code></td>
+                                <td>
+                                    @if($pf->fecha_constitucion)
+                                        @php
+                                            try {
+                                                $fecha = \Carbon\Carbon::createFromFormat('dmY', $pf->fecha_constitucion);
+                                                echo $fecha->format('d/m/Y');
+                                            } catch (\Exception $e) {
+                                                echo $pf->fecha_constitucion;
+                                            }
+                                        @endphp
+                                    @endif
+                                </td>
+                                <td>
+                                    @if($pf->fecha_vencimiento_pf)
+                                        @php
+                                            try {
+                                                $fecha = \Carbon\Carbon::createFromFormat('dmY', $pf->fecha_vencimiento_pf);
+                                                echo $fecha->format('d/m/Y');
+                                            } catch (\Exception $e) {
+                                                echo $pf->fecha_vencimiento_pf;
+                                            }
+                                        @endphp
+                                    @endif
+                                </td>
+                                <td>{{ $pf->moneda ?? '' }}</td>
+                                <td>{{ $pf->valor_nominal_origen ? number_format($pf->valor_nominal_origen, 0, ',', '.') : '' }}</td>
+                                <td>{{ $pf->valor_nominal_nacional ? number_format($pf->valor_nominal_nacional, 0, ',', '.') : '' }}</td>
+                                <td>{{ $pf->codigo_afectacion ?? '' }}</td>
+                                <td>
+                                    @if($pf->tipo_tasa)
+                                        <span class="badge bg-info">{{ $pf->tipo_tasa === 'F' ? 'Fija' : 'Variable' }}</span>
+                                    @endif
+                                </td>
+                                <td>{{ $pf->tasa ? number_format($pf->tasa, 3, ',', '.') : '' }}</td>
+                                <td>
+                                    @if($pf->titulo_deuda !== null)
+                                        <span class="badge bg-{{ $pf->titulo_deuda ? 'success' : 'secondary' }}">
+                                            {{ $pf->titulo_deuda ? 'Sí' : 'No' }}
+                                        </span>
+                                    @endif
+                                </td>
+                                <td><code>{{ $pf->codigo_titulo ?? '' }}</code></td>
+                            </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                    <div class="scroll-indicator" id="scrollIndicatorPF">
+                        <i class="fas fa-arrows-alt-h me-1"></i>
+                        Desliza horizontalmente para ver más columnas
+                    </div>
+                </div>
+                @endif
                 <!-- Acciones según estado -->
                 <div class="mt-4 text-center">
                     @if($presentation->estado === 'CARGADO')
@@ -597,35 +678,41 @@ function downloadJson() {
 
 // Configurar scroll horizontal
 function setupHorizontalScroll() {
-    const tableContainer = document.querySelector('.table-responsive');
-    const scrollIndicator = document.getElementById('scrollIndicator');
+    // Configurar para la tabla principal de stocks
+    const tableContainers = document.querySelectorAll('.table-responsive');
+    
+    tableContainers.forEach((tableContainer, index) => {
+        const scrollIndicator = index === 0 
+            ? document.getElementById('scrollIndicator')
+            : document.getElementById('scrollIndicatorPF');
 
-    if (!tableContainer || !scrollIndicator) return;
+        if (!tableContainer || !scrollIndicator) return;
 
-    // Ocultar indicador si no hay scroll horizontal
-    function checkScroll() {
-        const hasHorizontalScroll = tableContainer.scrollWidth > tableContainer.clientWidth;
-        scrollIndicator.style.display = hasHorizontalScroll ? 'block' : 'none';
-    }
+        // Ocultar indicador si no hay scroll horizontal
+        function checkScroll() {
+            const hasHorizontalScroll = tableContainer.scrollWidth > tableContainer.clientWidth;
+            scrollIndicator.style.display = hasHorizontalScroll ? 'block' : 'none';
+        }
 
-    // Verificar al cargar
-    checkScroll();
+        // Verificar al cargar
+        checkScroll();
 
-    // Verificar al cambiar tamaño de ventana
-    window.addEventListener('resize', checkScroll);
+        // Verificar al cambiar tamaño de ventana
+        window.addEventListener('resize', checkScroll);
 
-    // Ocultar indicador cuando se hace scroll
-    tableContainer.addEventListener('scroll', function() {
-        scrollIndicator.style.opacity = '0.3';
-        clearTimeout(scrollIndicator.timeout);
-        scrollIndicator.timeout = setTimeout(() => {
+        // Ocultar indicador cuando se hace scroll
+        tableContainer.addEventListener('scroll', function() {
+            scrollIndicator.style.opacity = '0.3';
+            clearTimeout(scrollIndicator.timeout);
+            scrollIndicator.timeout = setTimeout(() => {
+                scrollIndicator.style.opacity = '0.8';
+            }, 1000);
+        });
+
+        // Mostrar indicador cuando se detiene el scroll
+        tableContainer.addEventListener('scrollend', function() {
             scrollIndicator.style.opacity = '0.8';
-        }, 1000);
-    });
-
-    // Mostrar indicador cuando se detiene el scroll
-    tableContainer.addEventListener('scrollend', function() {
-        scrollIndicator.style.opacity = '0.8';
+        });
     });
 }
 
@@ -663,13 +750,16 @@ document.addEventListener('DOMContentLoaded', function() {
     background: #4a5a7a;
 }
 
-/* Estilos para la tabla */
-#tabla-stocks {
+/* Estilos para las tablas */
+#tabla-stocks,
+#tabla-plazos-fijos {
     min-width: 2000px; /* Ancho mínimo para asegurar scroll */
 }
 
 #tabla-stocks th,
-#tabla-stocks td {
+#tabla-stocks td,
+#tabla-plazos-fijos th,
+#tabla-plazos-fijos td {
     white-space: nowrap;
     min-width: 100px;
 }
