@@ -381,11 +381,8 @@ class WeeklyOperation extends Model
             'tipoTasa' => $this->tipo_tasa,
             'tasa' => $this->tasa ? (float) $this->tasa : 0,
             'tituloDeuda' => $this->titulo_deuda ? '1' : '0',
+            'codigoTitulo' => $this->codigo_titulo ?? '', // Siempre incluir, incluso si está vacío
         ];
-
-        if ($this->codigo_titulo) {
-            $plazoFijoJson['codigoTitulo'] = $this->codigo_titulo;
-        }
 
         return array_merge($json, $plazoFijoJson);
     }
