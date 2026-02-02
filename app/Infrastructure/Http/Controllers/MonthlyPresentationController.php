@@ -89,7 +89,9 @@ class MonthlyPresentationController extends Controller
 
         // Generar meses desde 1 mes atrás hasta el anteúltimo mes
         $startDate = $oneMonthAgo->startOfMonth();
-        $endDate = $twoMonthsAgo->endOfMonth();
+        // Importante: usar startOfMonth para que incluya el anteúltimo mes completo.
+        // Si usamos endOfMonth, en cruces de año (ej: 2026-01 vs 2025-12-31) se excluye 2025-12.
+        $endDate = $twoMonthsAgo->startOfMonth();
 
         $currentMonth = $startDate->copy();
 
