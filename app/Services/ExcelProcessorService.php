@@ -891,7 +891,7 @@ class ExcelProcessorService
             ],
             'por_especie' => $stocks->groupBy('tipo_especie')->map->count()->toArray(),
             'por_valuacion' => $stocks->groupBy('tipo_valuacion')->map->count()->toArray(),
-            'valor_total_contable' => $stocks->sum('valor_contable'),
+            'valor_total_contable' => $stocks->sum(fn ($s) => (float) ($s['valor_contable'] ?? 0)),
             'en_custodia' => $stocks->where('en_custodia', true)->count(),
             'financiera' => $stocks->where('financiera', true)->count(),
         ];
