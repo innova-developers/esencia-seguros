@@ -642,29 +642,28 @@ class ExcelProcessorService
     }
     
     /**
-     * Obtener valor de celda como string, forzando la lectura como texto para fechas
+     * Obtener valor de celda como string. Para celdas de fecha usa el serial de Excel
+     * y lo convierte a Y-m-d, así la fecha no depende del formato de celda (DD-MM vs MM-DD).
      */
     private function getCellValueAsString(Worksheet $worksheet, string $cellAddress)
     {
         $cell = $worksheet->getCell($cellAddress);
         
-        // Si la celda tiene formato de fecha, intentar obtener el valor como string
-        if ($cell->getDataType() === \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_NUMERIC && 
+        if ($cell->getDataType() === \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_NUMERIC &&
             \PhpOffice\PhpSpreadsheet\Shared\Date::isDateTime($cell)) {
-            
             try {
-                // Intentar obtener el valor como string formateado
-                $formattedValue = $cell->getFormattedValue();
-                if (!empty($formattedValue)) {
-                    return $formattedValue;
+                $serial = $cell->getValue();
+                if (is_numeric($serial)) {
+                    $dateTime = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($serial);
+                    return $dateTime->format('Y-m-d');
                 }
             } catch (\Exception $e) {
-                \Log::debug("Error al obtener valor formateado de celda {$cellAddress}: " . $e->getMessage());
+                \Log::debug("Error al convertir fecha Excel en celda {$cellAddress}: " . $e->getMessage());
             }
         }
         
-        // Si no se puede obtener como string formateado, usar el valor normal
-        return $cell->getValue();
+        $value = $cell->getValue();
+        return $value !== null ? (string) $value : '';
     }
     
     /**
